@@ -3,117 +3,127 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from dotenv import load_dotenv
 import os
-import re
+from datetime import datetime
 from sheets import log_reading
+from drive import upload_photo
+import re
 
-# Load .env variables
 load_dotenv()
-
 app = Flask(__name__)
-
-# Store conversation state
 user_state = {}
 
-# List of readings to collect
-readings_sequence = ["Dissolved Oxygen", "pH", "Temperature"]
+form_sequence = [
+    {"name": "Dissolved Oxygen", "key": "do", "prompt": "💧 Please submit the DO (mg/L) *with a photo of the reading*."},
+    {"name": "pH", "key": "ph", "prompt": "🔬 Please submit the pH *with a photo of the pH meter*."},
+    {"name": "Temperature", "key": "temp", "prompt": "🌡️ Please submit the water temperature (°C) *with a photo of the thermometer*."}
+]
 
-# SOP thresholds
-reading_limits = {
-    "Dissolved Oxygen": (5.0, 10.0),  # Example values
-    "pH": (6.5, 9.0),
-    "Temperature": (25.0, 32.0)
-}
-
-# Expert number (can be your own)
-EXPERT_PHONE = 'whatsapp:+18027600986'
-
-# Twilio setup
-twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-twilio_client = Client(twilio_sid, twilio_token)
-
-# Helper: Extract first number from a message
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
     return match.group() if match else None
 
-# Helper: Check if values are abnormal
-def check_abnormalities(data):
-    problems = []
-    for key, value in data.items():
-        try:
-            val = float(value)
-            low, high = reading_limits.get(key, (None, None))
-            if low is not None and (val < low or val > high):
-                problems.append(f"{key} is out of range: {val}")
-        except ValueError:
-            problems.append(f"{key} value '{value}' is not a number")
-    return problems
-
-
 @app.route('/webhook', methods=['POST'])
 def whatsapp_reply():
-    sender = request.form.get('From')  # e.g., whatsapp:+18027600986
-    incoming_msg = request.form.get('Body').strip()
+    sender = request.form.get('From')
+    msg_text = request.form.get('Body').strip()
+    media_url = request.form.get('MediaUrl0')
 
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Start new session
+    # Start session if new user
     if sender not in user_state:
-        user_state[sender] = {
-            "step": 0,
-            "responses": {}
-        }
-        msg.body(f"Hi! Let's log your farm readings.\nWhat is your {readings_sequence[0]} level?")
+        user_state[sender] = {"step": 0, "responses": {}, "media": {}}
+        current = form_sequence[0]
+        msg.body(f"👋 Hi! Let's begin.\n\n{current['prompt']}")
         return str(resp)
 
-    # Existing session
+    # Load session
     state = user_state[sender]
-    current_step = state["step"]
+    step = state["step"]
+    current = form_sequence[step]
+    key = current["key"]
+    responses = state["responses"]
+    media = state["media"]
 
-    # Extract number from input
-    extracted_value = extract_number(incoming_msg)
+    # Try to extract number
+    number = extract_number(msg_text)
 
-    if extracted_value:
-        key = readings_sequence[current_step]
-        state["responses"][key] = extracted_value
+    # Save number if it's valid and not saved yet
+    if key not in responses and number:
+        responses[key] = number
+        print(f"🧮 Saved number for {key}: {number}")
+
+    # Save media if not saved yet
+    if key not in media and media_url:
+        media[key] = media_url
+        print(f"📷 Saved media for {key}: {media_url}")
+
+    # If both are now saved, confirm and move on
+    if key in responses and key in media:
+        msg.body(f"✅ {current['name']} saved.\n")
+
         state["step"] += 1
-    else:
-        msg.body(f"⚠️ I couldn't find a number in your message.\nPlease enter your {readings_sequence[current_step]} as a number (e.g., 7.2)")
-        return str(resp)
 
-    # Continue or finish
-    if state["step"] < len(readings_sequence):
-        next_key = readings_sequence[state["step"]]
-        msg.body(f"Got it! What is your {next_key}?")
-    else:
-        summary = "\n".join(f"{k}: {v}" for k, v in state["responses"].items())
-        msg.body("✅ Thanks! All readings collected:\n" + summary)
-
-        # Log to Google Sheets
-        log_reading(sender.replace("whatsapp:", ""), state["responses"])
-
-        # Check for abnormalities
-        problems = check_abnormalities(state["responses"])
-
-        if problems:
-            expert_msg = f"🚨 Abnormal readings from {sender.replace('whatsapp:', '')}:\n" + "\n".join(problems)
+        if state["step"] < len(form_sequence):
+            next_field = form_sequence[state["step"]]
+            msg.body(f"{next_field['prompt']}")
         else:
-            expert_msg = f"✅ All readings normal from {sender.replace('whatsapp:', '')}"
+            # All complete — log & upload
+            log_reading(sender.replace("whatsapp:", ""), responses)
+            for k, url in media.items():
+                upload_photo(field_name=k, phone=sender.replace("whatsapp:", ""), date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
 
-        # Send to expert (yourself for now)
-        twilio_client.messages.create(
-            body=expert_msg,
-            from_='whatsapp:+14155238886',  # Twilio Sandbox Number
-            to=EXPERT_PHONE
-        )
+            # Check for abnormal values
+            do = float(responses.get("do", 0))
+            ph = float(responses.get("ph", 0))
+            temp = float(responses.get("temp", 0))
 
-        # Clear session
-        del user_state[sender]
+            abnormalities = []
+            if do < 4 or do > 8:
+                abnormalities.append(f"❗ DO is {do} (Expected: 4–8 mg/L)")
+            if ph < 6.5 or ph > 9:
+                abnormalities.append(f"❗ pH is {ph} (Expected: 6.5–9)")
+            if temp < 26 or temp > 32:
+                abnormalities.append(f"❗ Temperature is {temp}°C (Expected: 26–32°C)")
+
+            if abnormalities:
+                msg.body("⚠️ Thank you for submitting all readings.\nSome readings are outside normal range:\n\n" + "\n".join(abnormalities))
+            else:
+                msg.body("✅ All readings submitted and within normal range. Thank you!")
+
+            # Send expert report (currently to you)
+            twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+            twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+            client = Client(twilio_sid, twilio_token)
+
+            expert_number = "whatsapp:+18027600986"  # You for now
+            report = "\n".join(abnormalities) if abnormalities else "✅ All values normal."
+
+            client.messages.create(
+                body=f"📋 Report from {sender.replace('whatsapp:', '')} ({datetime.now().strftime('%Y-%m-%d')}):\n\n{report}",
+                from_="whatsapp:+14155238886",
+                to=expert_number
+            )
+
+            del user_state[sender]
+
+    else:
+        # Missing something — remind them
+        if key not in responses and not number:
+            msg.body(f"⚠️ Please send a *number* for {current['name']}.")
+        elif key not in media and not media_url:
+            msg.body(f"⚠️ Please send a *photo* of the {current['name']}.")
+        else:
+            # One is now present, waiting for the other
+            needed = []
+            if key not in responses:
+                needed.append("number")
+            if key not in media:
+                needed.append("photo")
+            msg.body(f"📩 Waiting for your {current['name']} {', and a '.join(needed)}.")
 
     return str(resp)
-
 
 if __name__ == '__main__':
     app.run(debug=True)
