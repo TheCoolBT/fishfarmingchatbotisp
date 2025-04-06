@@ -4,8 +4,7 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from sheets import log_reading
-from drive import upload_photo
+from drive import log_reading, upload_photo
 import re
 
 load_dotenv()

@@ -1,21 +1,45 @@
+import os
+import io
+import json
+import base64
+import gspread
+import requests
+from datetime import datetime
+from requests.auth import HTTPBasicAuth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-from requests.auth import HTTPBasicAuth
-import requests
-import os
-import io
-from datetime import datetime
 
-# Google Drive setup
-SCOPES = ['https://www.googleapis.com/auth/drive']
-creds = service_account.Credentials.from_service_account_file("google-creds.json", scopes=SCOPES)
+# === Auth credentials ===
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+
+if "GOOGLE_CREDS_BASE64" in os.environ:
+    creds_json = base64.b64decode(os.environ["GOOGLE_CREDS_BASE64"])
+    creds_dict = json.loads(creds_json)
+    creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+else:
+    creds = service_account.Credentials.from_service_account_file("google-creds.json", scopes=SCOPES)
+
+# === Google Sheets ===
+gc = gspread.authorize(creds)
+sheet = gc.open("FishFarmReadingsTest").sheet1
+
+def log_reading(phone, data_dict):
+    date = datetime.now().strftime("%Y-%m-%d")
+    row = [
+        date,
+        phone,
+        data_dict.get("do", ""),
+        data_dict.get("ph", ""),
+        data_dict.get("temp", "")
+    ]
+    sheet.append_row(row)
+    print(f"✅ Logged row to sheet: {row}")
+
+# === Google Drive ===
 drive_service = build('drive', 'v3', credentials=creds)
-
-# ✅ Your shared folder ID
 TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"
 
-# Twilio credentials from .env
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 
@@ -35,12 +59,7 @@ def upload_photo(field_name, phone, date, file_url):
             return
 
         filename = f"{field_name.upper()} {date}.jpg"
-
-        file_metadata = {
-            'name': filename,
-            'parents': [TARGET_FOLDER_ID]
-        }
-
+        file_metadata = {'name': filename, 'parents': [TARGET_FOLDER_ID]}
         media = MediaIoBaseUpload(io.BytesIO(response.content), mimetype='image/jpeg')
 
         drive_service.files().create(
