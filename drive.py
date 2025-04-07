@@ -23,89 +23,78 @@ else:
 # === Google Sheets ===
 gc = gspread.authorize(creds)
 dashboard = gc.open("Test Version of Dashboard")
-
 daily_tab = dashboard.worksheet("Daily Survey Input")
 weekly_tab = dashboard.worksheet("Weekly Survey Input")
 
-def log_reading(phone, data_dict):
-    """Log daily form data to daily survey tab"""
-    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = [date, phone]
-
-    row += [
-        data_dict.get("do", ""),
-        data_dict.get("ph", ""),
-        data_dict.get("temp", ""),
-        data_dict.get("dead_fish", ""),
-        data_dict.get("feeding_freq", ""),
-        data_dict.get("feed_weight", ""),
-        data_dict.get("inv_feed", ""),
-        data_dict.get("inv_rest", "")
-    ]
-
-    print("📝 Attempting to write this row to Daily Sheet:")
-    print(row)
-
-    try:
-        daily_tab.append_row(row)
-        print("✅ Logged to Daily Sheet successfully.")
-    except Exception as e:
-        print(f"❌ Error writing to Daily Sheet: {e}")
-        raise
-
-def log_weekly(phone, data_dict):
-    """Log weekly form data to weekly survey tab"""
-    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = [date, phone]
-
-    for i in range(1, 31):
-        row.append(data_dict.get(f"fish_{i}_photo", ""))
-        row.append(data_dict.get(f"fish_{i}_weight", ""))
-        row.append(data_dict.get(f"fish_{i}_length", ""))
-
-    print("📝 Attempting to write this row to Weekly Sheet:")
-    print(row)
-
-    try:
-        weekly_tab.append_row(row)
-        print("✅ Logged to Weekly Sheet successfully.")
-    except Exception as e:
-        print(f"❌ Error writing to Weekly Sheet: {e}")
-        raise
-
 # === Google Drive ===
 drive_service = build('drive', 'v3', credentials=creds)
-TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"  # All photos in one folder
-
+TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 
 def upload_photo(field_name, phone, date, file_url):
     print(f"📸 Uploading photo for {field_name} from {phone}")
-    print(f"🔗 Attempting to fetch from: {file_url}")
-
     try:
         response = requests.get(
             file_url,
             auth=HTTPBasicAuth(TWILIO_SID, TWILIO_AUTH),
             headers={"User-Agent": "Mozilla/5.0"}
         )
-
         if response.status_code != 200:
-            print(f"❌ Failed to download image. HTTP Status: {response.status_code}")
-            return
+            print(f"❌ Failed to download image. Status: {response.status_code}")
+            return None
 
         filename = f"{field_name.upper()} {date}.jpg"
-        file_metadata = {'name': filename, 'parents': [TARGET_FOLDER_ID]}
         media = MediaIoBaseUpload(io.BytesIO(response.content), mimetype='image/jpeg')
-
-        drive_service.files().create(
+        file_metadata = {'name': filename, 'parents': [TARGET_FOLDER_ID]}
+        uploaded_file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
 
-        print(f"✅ Uploaded {filename} to Google Drive.")
+        file_id = uploaded_file['id']
+        drive_service.permissions().create(
+            fileId=file_id,
+            body={'role': 'reader', 'type': 'anyone'},
+        ).execute()
+
+        link = f"https://drive.google.com/uc?id={file_id}"
+        print(f"✅ Uploaded {filename} → {link}")
+        return link
 
     except Exception as e:
-        print(f"❌ Error uploading photo: {e}")
+        print(f"❌ Upload error: {e}")
+        return None
+
+def log_reading(phone, data_dict):
+    """Log daily form data to daily survey tab"""
+    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    row = [timestamp]
+
+    keys = [
+        "do", "ph", "temp",
+        "dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"
+    ]
+
+    for key in keys:
+        value = data_dict.get(key, "")
+        photo = data_dict.get(f"{key}_photo", "")
+        row.extend([value, photo])  # Value in one cell, photo link in the next
+
+    daily_tab.append_row(row)
+    print(f"✅ Logged daily row to spreadsheet:\n{row}")
+
+def log_weekly(phone, data_dict):
+    """Log weekly form data to weekly survey tab"""
+    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    row = [timestamp]
+
+    for i in range(1, 31):
+        weight = data_dict.get(f"fish_{i}_weight", "")
+        length = data_dict.get(f"fish_{i}_length", "")
+        photo = data_dict.get(f"fish_{i}_photo", "")
+        row.extend([weight, length, photo])
+
+    weekly_tab.append_row(row)
+    print(f"✅ Logged weekly row to spreadsheet:\n{row}")
