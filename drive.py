@@ -23,10 +23,6 @@ else:
 # === Google Sheets ===
 gc = gspread.authorize(creds)
 dashboard = gc.open("Test Version of Dashboard")
-print("📄 Available tabs in spreadsheet:")
-for ws in dashboard.worksheets():
-    print("-", ws.title)
-
 
 daily_tab = dashboard.worksheet("Daily Survey Input")
 weekly_tab = dashboard.worksheet("Weekly Survey Input")
@@ -47,8 +43,15 @@ def log_reading(phone, data_dict):
         data_dict.get("inv_rest", "")
     ]
 
-    daily_tab.append_row(row)
-    print(f"✅ Logged daily row: {row}")
+    print("📝 Attempting to write this row to Daily Sheet:")
+    print(row)
+
+    try:
+        daily_tab.append_row(row)
+        print("✅ Logged to Daily Sheet successfully.")
+    except Exception as e:
+        print(f"❌ Error writing to Daily Sheet: {e}")
+        raise
 
 def log_weekly(phone, data_dict):
     """Log weekly form data to weekly survey tab"""
@@ -60,12 +63,19 @@ def log_weekly(phone, data_dict):
         row.append(data_dict.get(f"fish_{i}_weight", ""))
         row.append(data_dict.get(f"fish_{i}_length", ""))
 
-    weekly_tab.append_row(row)
-    print(f"✅ Logged weekly row: {row}")
+    print("📝 Attempting to write this row to Weekly Sheet:")
+    print(row)
+
+    try:
+        weekly_tab.append_row(row)
+        print("✅ Logged to Weekly Sheet successfully.")
+    except Exception as e:
+        print(f"❌ Error writing to Weekly Sheet: {e}")
+        raise
 
 # === Google Drive ===
 drive_service = build('drive', 'v3', credentials=creds)
-TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"  # Keep all photos in this folder
+TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"  # All photos in one folder
 
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")

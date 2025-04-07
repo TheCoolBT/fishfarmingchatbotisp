@@ -1,45 +1,27 @@
-weekly_form_en = [
-    {
-        "key": f"fish_{i}_photo",
-        "name": f"Fish {i} Photo",
-        "prompt": f"📸 Send a photo of Fish {i}"
-    }
-    for i in range(1, 31)
-] + [
-    {
-        "key": f"fish_{i}_weight",
-        "name": f"Fish {i} Weight",
-        "prompt": f"⚖ Then type the weight of Fish {i} in grams (e.g., 157)"
-    }
-    for i in range(1, 31)
-] + [
-    {
-        "key": f"fish_{i}_length",
-        "name": f"Fish {i} Length",
-        "prompt": f"📏 Then type the length of Fish {i} in cm (e.g., 19.5)"
-    }
-    for i in range(1, 31)
-]
+def generate_weekly_form(lang):
+    form = []
+    for i in range(1, 31):
+        form.extend([
+            {
+                "key": f"fish_{i}_photo",
+                "name": f"Fish {i} Photo" if lang == "en" else f"Foto Ikan {i}",
+                "prompt": f"📸 Send a photo of Fish {i}" if lang == "en" else f"📸 Kirim foto Ikan {i}",
+                "require_photo": True
+            },
+            {
+                "key": f"fish_{i}_weight",
+                "name": f"Fish {i} Weight (grams)" if lang == "en" else f"Berat Ikan {i} (gram)",
+                "prompt": f"⚖ Type the weight of Fish {i} in grams (e.g., 157)" if lang == "en" else f"⚖ Ketik berat Ikan {i} dalam gram (contoh: 157)",
+                "require_photo": False
+            },
+            {
+                "key": f"fish_{i}_length",
+                "name": f"Fish {i} Length (cm)" if lang == "en" else f"Panjang Ikan {i} (cm)",
+                "prompt": f"📏 Type the length of Fish {i} in cm (e.g., 19.5)" if lang == "en" else f"📏 Ketik panjang Ikan {i} dalam cm (contoh: 19.5)",
+                "require_photo": False
+            }
+        ])
+    return form
 
-weekly_form_id = [
-    {
-        "key": f"ikan_{i}_photo",
-        "name": f"Foto Ikan {i}",
-        "prompt": f"📸 Kirim foto Ikan {i}"
-    }
-    for i in range(1, 31)
-] + [
-    {
-        "key": f"ikan_{i}_berat",
-        "name": f"Berat Ikan {i}",
-        "prompt": f"⚖ Lalu ketik berat Ikan {i} dalam gram (contoh: 157)"
-    }
-    for i in range(1, 31)
-] + [
-    {
-        "key": f"ikan_{i}_panjang",
-        "name": f"Panjang Ikan {i}",
-        "prompt": f"📏 Lalu ketik panjang Ikan {i} dalam cm (contoh: 19.5)"
-    }
-    for i in range(1, 31)
-]
+weekly_form_en = generate_weekly_form("en")
+weekly_form_id = generate_weekly_form("id")

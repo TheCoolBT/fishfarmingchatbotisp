@@ -68,29 +68,40 @@ def whatsapp_reply():
             msg.body("❓ Please reply 'daily' or 'weekly' / Balas 'harian' atau 'mingguan'")
         return str(resp)
 
-    # Main form flow
     form = state["form"]
     step = state["step"]
 
     if step >= len(form):
-        msg.body("✅ You've already completed the form.")
+        msg.body("✅ You've already completed the form. Starting over now for testing.\n🌐 Please select a language:\n🇮🇩 Indonesian\n🇺🇸 English")
+        user_state[sender] = {
+            "step": -2,
+            "responses": {},
+            "media": {},
+            "lang": None,
+            "form": None,
+            "form_type": None
+        }
         return str(resp)
 
     current = form[step]
     key = current["key"]
     number = extract_number(msg_text)
 
-    # Save responses
+    # Save number response
     if number and key not in state["responses"]:
         state["responses"][key] = number
+        print(f"🧮 Saved number for {key}: {number}")
 
+    # Save photo response
     if media_url and key not in state["media"]:
         state["media"][key] = media_url
+        print(f"📷 Saved media for {key}: {media_url}")
 
+    # Determine if a photo is required
+    photo_required = current.get("require_photo", True)
     has_number = key in state["responses"]
-    has_photo = key in state["media"]
+    has_photo = not photo_required or key in state["media"]
 
-    # Wait until both number and photo are  present before moving on
     if has_number and has_photo:
         state["step"] += 1
         if state["step"] < len(form):
@@ -98,22 +109,36 @@ def whatsapp_reply():
             msg.body(next_prompt)
         else:
             phone = sender.replace("whatsapp:", "")
-            if state["form_type"] == "daily":
+            print(f"📤 Final submission from {phone}")
+            try:
                 if state["form_type"] == "daily":
                     log_reading(phone, state["responses"])
                 else:
                     log_weekly(phone, state["responses"])
+            except Exception as e:
+                print(f"❌ Error writing to spreadsheet: {e}")
+                msg.body("⚠️ There was a problem logging your data. Please try again.")
+                return str(resp)
+
             for k, url in state["media"].items():
                 upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
+
             closing = "✅ Thank you for submitting the "
             closing += "daily form! / Terima kasih sudah mengisi formulir harian." if state["form_type"] == "daily" \
                 else "weekly form! / Terima kasih sudah mengisi formulir mingguan."
-            msg.body(closing)
-            del user_state[sender]
+            msg.body(closing + "\n\n🌀 Restarting the form for testing...\n\n🌐 Please select a language:\n🇮🇩 Indonesian\n🇺🇸 English")
+            user_state[sender] = {
+                "step": -2,
+                "responses": {},
+                "media": {},
+                "lang": None,
+                "form": None,
+                "form_type": None
+            }
     else:
         if not has_number:
             msg.body(f"🔢 Please enter a number for: {current['name']}")
-        elif not has_photo:
+        elif photo_required and not has_photo:
             msg.body(f"📸 Please upload a photo for: {current['name']}")
 
     return str(resp)
