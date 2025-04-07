@@ -22,23 +22,46 @@ else:
 
 # === Google Sheets ===
 gc = gspread.authorize(creds)
-sheet = gc.open("FishFarmReadingsTest").sheet1
+dashboard = gc.open("Test Version of Dashboard")
+
+daily_tab = dashboard.worksheet("💬 (Bubbler) Sampling Harian / Daily Survey input")
+weekly_tab = dashboard.worksheet("💬 (Bubbler) Sampling Mingguan / Weekly Survey input")
 
 def log_reading(phone, data_dict):
-    date = datetime.now().strftime("%Y-%m-%d")
-    row = [
-        date,
-        phone,
+    """Log daily form data to daily survey tab"""
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    row = [date, phone]
+
+    row += [
         data_dict.get("do", ""),
         data_dict.get("ph", ""),
-        data_dict.get("temp", "")
+        data_dict.get("temp", ""),
+        data_dict.get("dead_fish", ""),
+        data_dict.get("feeding_freq", ""),
+        data_dict.get("feed_weight", ""),
+        data_dict.get("inv_feed", ""),
+        data_dict.get("inv_rest", "")
     ]
-    sheet.append_row(row)
-    print(f"✅ Logged row to sheet: {row}")
+
+    daily_tab.append_row(row)
+    print(f"✅ Logged daily row: {row}")
+
+def log_weekly(phone, data_dict):
+    """Log weekly form data to weekly survey tab"""
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    row = [date, phone]
+
+    for i in range(1, 31):
+        row.append(data_dict.get(f"fish_{i}_photo", ""))
+        row.append(data_dict.get(f"fish_{i}_weight", ""))
+        row.append(data_dict.get(f"fish_{i}_length", ""))
+
+    weekly_tab.append_row(row)
+    print(f"✅ Logged weekly row: {row}")
 
 # === Google Drive ===
 drive_service = build('drive', 'v3', credentials=creds)
-TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"
+TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"  # Keep all photos in this folder
 
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
