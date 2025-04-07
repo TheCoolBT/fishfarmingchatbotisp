@@ -23,9 +23,13 @@ else:
 # === Google Sheets ===
 gc = gspread.authorize(creds)
 dashboard = gc.open("Test Version of Dashboard")
+print("📄 Available tabs in spreadsheet:")
+for ws in dashboard.worksheets():
+    print("-", ws.title)
 
-daily_tab = dashboard.worksheet("(bubbler) Sampling Harian / Daily Survey input")
-weekly_tab = dashboard.worksheet("(bubbler) Sampling Mingguan / Weekly Survey input")
+
+daily_tab = dashboard.worksheet("Daily Survey Input")
+weekly_tab = dashboard.worksheet("Weekly Survey Input")
 
 def log_reading(phone, data_dict):
     """Log daily form data to daily survey tab"""
