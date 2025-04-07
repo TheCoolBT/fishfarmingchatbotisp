@@ -24,8 +24,8 @@ else:
 gc = gspread.authorize(creds)
 dashboard = gc.open("Test Version of Dashboard")
 
-daily_tab = dashboard.worksheet("💬 (Bubbler) Sampling Harian / Daily Survey input")
-weekly_tab = dashboard.worksheet("💬 (Bubbler) Sampling Mingguan / Weekly Survey input")
+daily_tab = dashboard.worksheet("(bubbler) Sampling Harian / Daily Survey input")
+weekly_tab = dashboard.worksheet("(bubbler) Sampling Mingguan / Weekly Survey input")
 
 def log_reading(phone, data_dict):
     """Log daily form data to daily survey tab"""
