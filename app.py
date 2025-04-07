@@ -1,130 +1,123 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client
 from dotenv import load_dotenv
-import os
+from drive import log_reading, log_weekly, upload_photo
+from forms.daily_form import daily_form_en, daily_form_id
+from forms.weekly_form import weekly_form_en, weekly_form_id
 from datetime import datetime
-from drive import log_reading, upload_photo
+import os
 import re
 
 load_dotenv()
 app = Flask(__name__)
 user_state = {}
 
-form_sequence = [
-    {"name": "Dissolved Oxygen", "key": "do", "prompt": "💧 Please submit the DO (mg/L) *with a photo of the reading*."},
-    {"name": "pH", "key": "ph", "prompt": "🔬 Please submit the pH *with a photo of the pH meter*."},
-    {"name": "Temperature", "key": "temp", "prompt": "🌡️ Please submit the water temperature (°C) *with a photo of the thermometer*."}
-]
-
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
     return match.group() if match else None
 
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def whatsapp_reply():
-    sender = request.form.get('From')
-    msg_text = request.form.get('Body').strip()
-    media_url = request.form.get('MediaUrl0')
-
+    sender = request.form.get("From")
+    msg_text = request.form.get("Body", "").strip().lower()
+    media_url = request.form.get("MediaUrl0")
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Start session if new user
     if sender not in user_state:
-        user_state[sender] = {"step": 0, "responses": {}, "media": {}}
-        current = form_sequence[0]
-        msg.body(f"👋 Hi! Let's begin.\n\n{current['prompt']}")
+        user_state[sender] = {
+            "step": -2,
+            "responses": {},
+            "media": {},
+            "lang": None,
+            "form": None,
+            "form_type": None
+        }
+        msg.body("🌐 Silakan pilih bahasa / Please select a language:\n🇮🇩 Indonesian\n🇺🇸 English")
         return str(resp)
 
-    # Load session
     state = user_state[sender]
-    step = state["step"]
-    current = form_sequence[step]
-    key = current["key"]
-    responses = state["responses"]
-    media = state["media"]
 
-    # Try to extract number
+    # Language selection
+    if state["step"] == -2:
+        if "indonesian" in msg_text or msg_text == "1":
+            state["lang"] = "id"
+            state["step"] = -1
+            msg.body("📋 Apakah Anda ingin mengisi formulir harian atau mingguan?")
+        elif "english" in msg_text or msg_text == "2":
+            state["lang"] = "en"
+            state["step"] = -1
+            msg.body("📋 Would you like to fill the daily or weekly form?")
+        else:
+            msg.body("❓ Please reply 'English' or 'Indonesian' / Balas 'English' atau 'Indonesian'")
+        return str(resp)
+
+    # Form type selection
+    if state["step"] == -1:
+        if "daily" in msg_text or "harian" in msg_text:
+            state["form_type"] = "daily"
+            state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+            state["step"] = 0
+            msg.body(state["form"][0]["prompt"])
+        elif "weekly" in msg_text or "mingguan" in msg_text:
+            state["form_type"] = "weekly"
+            state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
+            state["step"] = 0
+            msg.body(state["form"][0]["prompt"])
+        else:
+            msg.body("❓ Please reply 'daily' or 'weekly' / Balas 'harian' atau 'mingguan'")
+        return str(resp)
+
+    # Main form flow
+    form = state["form"]
+    step = state["step"]
+
+    if step >= len(form):
+        msg.body("✅ You've already completed the form.")
+        return str(resp)
+
+    current = form[step]
+    key = current["key"]
     number = extract_number(msg_text)
 
-    # Save number if it's valid and not saved yet
-    if key not in responses and number:
-        responses[key] = number
-        print(f"🧮 Saved number for {key}: {number}")
+    # Save responses
+    if number and key not in state["responses"]:
+        state["responses"][key] = number
 
-    # Save media if not saved yet
-    if key not in media and media_url:
-        media[key] = media_url
-        print(f"📷 Saved media for {key}: {media_url}")
+    if media_url and key not in state["media"]:
+        state["media"][key] = media_url
 
-    # If both are now saved, confirm and move on
-    if key in responses and key in media:
-        msg.body(f"✅ {current['name']} saved.\n")
+    has_number = key in state["responses"]
+    has_photo = key in state["media"]
 
+    # Wait until both number and photo are  present before moving on
+    if has_number and has_photo:
         state["step"] += 1
-
-        if state["step"] < len(form_sequence):
-            next_field = form_sequence[state["step"]]
-            msg.body(f"{next_field['prompt']}")
+        if state["step"] < len(form):
+            next_prompt = form[state["step"]]["prompt"]
+            msg.body(next_prompt)
         else:
-            # All complete — log & upload
-            log_reading(sender.replace("whatsapp:", ""), responses)
-            for k, url in media.items():
-                upload_photo(field_name=k, phone=sender.replace("whatsapp:", ""), date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
-
-            # Check for abnormal values
-            do = float(responses.get("do", 0))
-            ph = float(responses.get("ph", 0))
-            temp = float(responses.get("temp", 0))
-
-            abnormalities = []
-            if do < 4 or do > 8:
-                abnormalities.append(f"❗ DO is {do} (Expected: 4–8 mg/L)")
-            if ph < 6.5 or ph > 9:
-                abnormalities.append(f"❗ pH is {ph} (Expected: 6.5–9)")
-            if temp < 26 or temp > 32:
-                abnormalities.append(f"❗ Temperature is {temp}°C (Expected: 26–32°C)")
-
-            if abnormalities:
-                msg.body("⚠️ Thank you for submitting all readings.\nSome readings are outside normal range:\n\n" + "\n".join(abnormalities))
-            else:
-                msg.body("✅ All readings submitted and within normal range. Thank you!")
-
-            # Send expert report (currently to you)
-            twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-            twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-            client = Client(twilio_sid, twilio_token)
-
-            expert_number = "whatsapp:+18027600986"  # You for now
-            report = "\n".join(abnormalities) if abnormalities else "✅ All values normal."
-
-            client.messages.create(
-                body=f"📋 Report from {sender.replace('whatsapp:', '')} ({datetime.now().strftime('%Y-%m-%d')}):\n\n{report}",
-                from_="whatsapp:+14155238886",
-                to=expert_number
-            )
-
+            phone = sender.replace("whatsapp:", "")
+            if state["form_type"] == "daily":
+                if state["form_type"] == "daily":
+                    log_reading(phone, state["responses"])
+                else:
+                    log_weekly(phone, state["responses"])
+            for k, url in state["media"].items():
+                upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
+            closing = "✅ Thank you for submitting the "
+            closing += "daily form! / Terima kasih sudah mengisi formulir harian." if state["form_type"] == "daily" \
+                else "weekly form! / Terima kasih sudah mengisi formulir mingguan."
+            msg.body(closing)
             del user_state[sender]
-
     else:
-        # Missing something — remind them
-        if key not in responses and not number:
-            msg.body(f"⚠️ Please send a *number* for {current['name']}.")
-        elif key not in media and not media_url:
-            msg.body(f"⚠️ Please send a *photo* of the {current['name']}.")
-        else:
-            # One is now present, waiting for the other
-            needed = []
-            if key not in responses:
-                needed.append("number")
-            if key not in media:
-                needed.append("photo")
-            msg.body(f"📩 Waiting for your {current['name']} {', and a '.join(needed)}.")
+        if not has_number:
+            msg.body(f"🔢 Please enter a number for: {current['name']}")
+        elif not has_photo:
+            msg.body(f"📸 Please upload a photo for: {current['name']}")
 
     return str(resp)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
