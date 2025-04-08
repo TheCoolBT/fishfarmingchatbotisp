@@ -24,7 +24,7 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Universal reset command
+    # Universal reset
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {
             "step": -2,
@@ -56,38 +56,43 @@ def whatsapp_reply():
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
             state["step"] = -1
-            msg.body("📋 Apakah Anda ingin mengisi formulir harian atau mingguan?")
+            msg.body("📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
         elif msg_text in ["2", "english"]:
             state["lang"] = "en"
             state["step"] = -1
-            msg.body("📋 Would you like to fill the daily or weekly form?")
+            msg.body("📋 Please choose a form type:\n1. Daily\n2. Weekly")
         else:
-            msg.body("❓ Please reply '1' for 🇮🇩 Bahasa Indonesia or '2' for 🇬🇧 English")
+            msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
         return str(resp)
 
     # Form type selection
     if state["step"] == -1:
-        if msg_text in ["daily", "harian"]:
+        if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
             state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
-        elif msg_text in ["weekly", "mingguan"]:
+        elif msg_text in ["2", "weekly", "mingguan"]:
             state["form_type"] = "weekly"
             state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
         else:
-            msg.body("❓ Please reply with 'daily' or 'weekly' / Balas 'harian' atau 'mingguan'")
+            if state["lang"] == "id":
+                msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
+            else:
+                msg.body("❓ Reply with 1 for Daily or 2 for Weekly")
         return str(resp)
 
     form = state["form"]
     step = state["step"]
 
     if step >= len(form):
-        msg.body(
-            "✅ You've already completed the form. Restarting for testing.\n\n🌐 Please select a language:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
-        )
+        restart_msg = {
+            "en": "✅ You've already completed the form. Restarting...\n\n🌐 Select a language:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English",
+            "id": "✅ Anda sudah menyelesaikan formulir. Memulai ulang...\n\n🌐 Pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
+        }
+        msg.body(restart_msg[state["lang"]])
         user_state[sender] = {
             "step": -2,
             "responses": {},
@@ -102,12 +107,10 @@ def whatsapp_reply():
     key = current["key"]
     number = extract_number(msg_text)
 
-    # Save number
     if number and key not in state["responses"]:
         state["responses"][key] = number
         print(f"🧮 Saved number for {key}: {number}")
 
-    # Save media
     if media_url and key not in state["media"]:
         state["media"][key] = media_url
         print(f"📷 Saved media for {key}: {media_url}")
@@ -150,7 +153,6 @@ def whatsapp_reply():
             }
 
             msg.body(thank_you[state["lang"]])
-
             user_state[sender] = {
                 "step": -2,
                 "responses": {},
@@ -163,9 +165,15 @@ def whatsapp_reply():
             msg.body(form[state["step"]]["prompt"])
     else:
         if not has_number:
-            msg.body(f"🔢 Please enter a number for: {current['name']}")
+            msg.body({
+                "en": f"🔢 Please enter a number for: {current['name']}",
+                "id": f"🔢 Masukkan angka untuk: {current['name']}"
+            }[state["lang"]])
         elif photo_required and not has_photo:
-            msg.body(f"📸 Please upload a photo for: {current['name']}")
+            msg.body({
+                "en": f"📸 Please upload a photo for: {current['name']}",
+                "id": f"📸 Silakan unggah foto untuk: {current['name']}"
+            }[state["lang"]])
 
     return str(resp)
 
