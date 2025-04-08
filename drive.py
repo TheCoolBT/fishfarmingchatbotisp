@@ -72,7 +72,7 @@ def log_reading(phone, data_dict):
     timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
     row = [timestamp]
 
-    # 1. First 3 fields: do, ph, temp + photos next to each
+    # 1. First block: do, ph, temp (value + photo)
     for key in ["do", "ph", "temp"]:
         value = data_dict.get(key, "")
         photo = data_dict.get(f"{key}_photo", "")
@@ -83,19 +83,22 @@ def log_reading(phone, data_dict):
         row.append(value)
         row.append(photo)
 
-    # 2. Add two blank spacer columns
+    # 2. Two blank columns
     row += ["", ""]
 
-    # 3. Remaining fields with photo for each
+    # 3. Remaining fields:
+    # dead_fish, feed_weight, inv_feed, inv_rest = value + photo
+    # feeding_freq = value only (no photo)
     for key in ["dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"]:
         value = data_dict.get(key, "")
-        photo = data_dict.get(f"{key}_photo", "")
         try:
             value = float(value)
         except:
             pass
         row.append(value)
-        row.append(photo)
+        if key != "feeding_freq":
+            photo = data_dict.get(f"{key}_photo", "")
+            row.append(photo)
 
     print("📤 Final daily submission row:")
     print(row)
@@ -108,9 +111,9 @@ def log_weekly(phone, data_dict):
     row = [timestamp]
 
     for i in range(1, 31):
+        photo = data_dict.get(f"fish_{i}_photo", "")
         weight = data_dict.get(f"fish_{i}_weight", "")
         length = data_dict.get(f"fish_{i}_length", "")
-        photo = data_dict.get(f"fish_{i}_photo", "")
         try:
             weight = float(weight)
         except:
@@ -119,9 +122,9 @@ def log_weekly(phone, data_dict):
             length = float(length)
         except:
             pass
-        row.extend([weight, length, photo])
+        row.extend([photo, weight, length])
 
-    print(" Final weekly submission row:")
+    print("📤 Final weekly submission row:")
     print(row)
     weekly_tab.append_row(row)
-    print(" Row successfully written to Weekly Survey Input")
+    print("✅ Row successfully written to Weekly Survey Input")

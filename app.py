@@ -24,6 +24,19 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
+    # Universal reset command
+    if msg_text in ["exit", "keluar"]:
+        user_state[sender] = {
+            "step": -2,
+            "responses": {},
+            "media": {},
+            "lang": None,
+            "form": None,
+            "form_type": None
+        }
+        msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        return str(resp)
+
     if sender not in user_state:
         user_state[sender] = {
             "step": -2,
@@ -33,39 +46,39 @@ def whatsapp_reply():
             "form": None,
             "form_type": None
         }
-        msg.body("🌐 Silakan pilih bahasa / Please select a language:\n🇮🇩 Indonesian\n🇺🇸 English")
+        msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
     state = user_state[sender]
 
     # Language selection
     if state["step"] == -2:
-        if "indonesian" in msg_text or msg_text == "1":
+        if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
             state["step"] = -1
             msg.body("📋 Apakah Anda ingin mengisi formulir harian atau mingguan?")
-        elif "english" in msg_text or msg_text == "2":
+        elif msg_text in ["2", "english"]:
             state["lang"] = "en"
             state["step"] = -1
             msg.body("📋 Would you like to fill the daily or weekly form?")
         else:
-            msg.body("❓ Please reply 'English' or 'Indonesian' / Balas 'English' atau 'Indonesian'")
+            msg.body("❓ Please reply '1' for 🇮🇩 Bahasa Indonesia or '2' for 🇬🇧 English")
         return str(resp)
 
     # Form type selection
     if state["step"] == -1:
-        if "daily" in msg_text or "harian" in msg_text:
+        if msg_text in ["daily", "harian"]:
             state["form_type"] = "daily"
             state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
-        elif "weekly" in msg_text or "mingguan" in msg_text:
+        elif msg_text in ["weekly", "mingguan"]:
             state["form_type"] = "weekly"
             state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
         else:
-            msg.body("❓ Please reply 'daily' or 'weekly' / Balas 'harian' atau 'mingguan'")
+            msg.body("❓ Please reply with 'daily' or 'weekly' / Balas 'harian' atau 'mingguan'")
         return str(resp)
 
     form = state["form"]
@@ -73,7 +86,7 @@ def whatsapp_reply():
 
     if step >= len(form):
         msg.body(
-            "✅ You've already completed the form. Restarting now for testing.\n\n🌐 Please select a language:\n🇮🇩 Indonesian\n🇺🇸 English"
+            "✅ You've already completed the form. Restarting for testing.\n\n🌐 Please select a language:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
         )
         user_state[sender] = {
             "step": -2,
@@ -106,12 +119,10 @@ def whatsapp_reply():
     if has_number and has_photo:
         state["step"] += 1
 
-        # Final step
         if state["step"] >= len(form):
             phone = sender.replace("whatsapp:", "")
             print(f"📤 Final submission from {phone}")
 
-            # Upload media and store links
             for k, url in state["media"].items():
                 link = upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
                 if link:
@@ -127,16 +138,19 @@ def whatsapp_reply():
                 msg.body("⚠️ There was a problem logging your data. Please try again.")
                 return str(resp)
 
-            closing = "✅ Thank you for submitting the "
-            closing += "daily form! / Terima kasih sudah mengisi formulir harian." if state["form_type"] == "daily" \
-                else "weekly form! / Terima kasih sudah mengisi formulir mingguan."
-            msg.body(
-                closing + 
-                "\n\n📨 The form has been submitted. Thank you! / Formulir telah dikirim. Terima kasih!\n\n" +
-                "📥 Send any message to fill out another form. / Kirim pesan apa pun untuk mulai lagi."
-            )
+            thank_you = {
+                "en": (
+                    "✅ Thank you for completing the form!\n"
+                    "📨 Send any message to start a new one, or type 'exit' to restart."
+                ),
+                "id": (
+                    "✅ Terima kasih telah mengisi formulir!\n"
+                    "📨 Kirim pesan apa pun untuk mengisi lagi, atau ketik 'keluar' untuk mulai ulang."
+                )
+            }
 
-            # Reset for next round
+            msg.body(thank_you[state["lang"]])
+
             user_state[sender] = {
                 "step": -2,
                 "responses": {},
@@ -145,7 +159,6 @@ def whatsapp_reply():
                 "form": None,
                 "form_type": None
             }
-
         else:
             msg.body(form[state["step"]]["prompt"])
     else:
