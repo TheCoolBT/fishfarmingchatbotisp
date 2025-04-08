@@ -69,32 +69,59 @@ def upload_photo(field_name, phone, date, file_url):
 
 def log_reading(phone, data_dict):
     """Log daily form data to daily survey tab"""
-    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
     row = [timestamp]
 
-    keys = [
-        "do", "ph", "temp",
-        "dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"
-    ]
-
-    for key in keys:
+    # 1. First 3 fields: do, ph, temp + photos next to each
+    for key in ["do", "ph", "temp"]:
         value = data_dict.get(key, "")
         photo = data_dict.get(f"{key}_photo", "")
-        row.extend([value, photo])  # Value in one cell, photo link in the next
+        try:
+            value = float(value)
+        except:
+            pass
+        row.append(value)
+        row.append(photo)
 
+    # 2. Add two blank spacer columns
+    row += ["", ""]
+
+    # 3. Remaining fields with photo for each
+    for key in ["dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"]:
+        value = data_dict.get(key, "")
+        photo = data_dict.get(f"{key}_photo", "")
+        try:
+            value = float(value)
+        except:
+            pass
+        row.append(value)
+        row.append(photo)
+
+    print("📤 Final daily submission row:")
+    print(row)
     daily_tab.append_row(row)
-    print(f"✅ Logged daily row to spreadsheet:\n{row}")
+    print("✅ Row successfully written to Daily Survey Input")
 
 def log_weekly(phone, data_dict):
     """Log weekly form data to weekly survey tab"""
-    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
     row = [timestamp]
 
     for i in range(1, 31):
         weight = data_dict.get(f"fish_{i}_weight", "")
         length = data_dict.get(f"fish_{i}_length", "")
         photo = data_dict.get(f"fish_{i}_photo", "")
+        try:
+            weight = float(weight)
+        except:
+            pass
+        try:
+            length = float(length)
+        except:
+            pass
         row.extend([weight, length, photo])
 
+    print(" Final weekly submission row:")
+    print(row)
     weekly_tab.append_row(row)
-    print(f"✅ Logged weekly row to spreadsheet:\n{row}")
+    print(" Row successfully written to Weekly Survey Input")
