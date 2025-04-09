@@ -5,12 +5,49 @@ from drive import log_reading, log_weekly, upload_photo
 from forms.daily_form import daily_form_en, daily_form_id
 from forms.weekly_form import weekly_form_en, weekly_form_id
 from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+from twilio.rest import Client
+from pytz import timezone
 import os
 import re
 
 load_dotenv()
 app = Flask(__name__)
 user_state = {}
+
+# Twilio Auth
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_FROM = "whatsapp:+15557213370"
+RECIPIENTS = ["whatsapp:+18027600986"]  # Add more numbers as needed
+client = Client(TWILIO_SID, TWILIO_AUTH)
+
+# Scheduler job to remind daily
+def send_daily_reminder():
+    for recipient in RECIPIENTS:
+        client.messages.create(
+            from_=TWILIO_FROM,
+            to=recipient,
+            body="⏰ It's time to fill out the daily form! / Saatnya mengisi formulir harian!\n\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
+        )
+
+# Scheduler job to remind weekly
+def send_weekly_reminder():
+    for recipient in RECIPIENTS:
+        client.messages.create(
+            from_=TWILIO_FROM,
+            to=recipient,
+            body="⏰ It's time to fill out the weekly form! / Saatnya mengisi formulir mingguan!\n\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
+        )
+
+scheduler = BackgroundScheduler(timezone=timezone("Asia/Jakarta"))
+scheduler.add_job(send_daily_reminder, trigger='cron', hour=10, minute=0)
+scheduler.add_job(send_weekly_reminder, trigger='cron', day_of_week='sun', hour=12, minute=0)
+scheduler.start()
+
+# ... rest of your app.py code, unchanged ...
+# Include the full `whatsapp_reply()` function from your current working version below this comment.
+# This script appends the scheduling feature to your existing WhatsApp bot logic.
 
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
