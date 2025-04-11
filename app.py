@@ -19,7 +19,7 @@ user_state = {}
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_FROM = "whatsapp:+15557213370"
-RECIPIENTS = ["whatsapp:+18027600986"]  # Add more numbers as needed
+RECIPIENTS = ["whatsapp:+18027600986","whatsapp:+6285692351792"]  # Add more numbers as needed
 client = Client(TWILIO_SID, TWILIO_AUTH)
 
 # Scheduler job to remind daily
