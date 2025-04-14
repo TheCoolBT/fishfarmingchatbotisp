@@ -5,9 +5,6 @@ from drive import log_reading, log_weekly, upload_photo
 from forms.daily_form import daily_form_en, daily_form_id
 from forms.weekly_form import weekly_form_en, weekly_form_id
 from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-from twilio.rest import Client
-from pytz import timezone
 import os
 import re
 
@@ -15,43 +12,18 @@ load_dotenv()
 app = Flask(__name__)
 user_state = {}
 
-# Twilio Auth
-TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_FROM = "whatsapp:+15557213370"
-RECIPIENTS = ["whatsapp:+18027600986","whatsapp:+6285692351792"]  # Add more numbers as needed
-client = Client(TWILIO_SID, TWILIO_AUTH)
-
-# Scheduler job to remind daily
-def send_daily_reminder():
-    for recipient in RECIPIENTS:
-        client.messages.create(
-            from_=TWILIO_FROM,
-            to=recipient,
-            body="⏰ It's time to fill out the daily form! / Saatnya mengisi formulir harian!\n\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
-        )
-
-# Scheduler job to remind weekly
-def send_weekly_reminder():
-    for recipient in RECIPIENTS:
-        client.messages.create(
-            from_=TWILIO_FROM,
-            to=recipient,
-            body="⏰ It's time to fill out the weekly form! / Saatnya mengisi formulir mingguan!\n\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
-        )
-
-scheduler = BackgroundScheduler(timezone=timezone("Asia/Jakarta"))
-scheduler.add_job(send_daily_reminder, trigger='cron', hour=10, minute=0)
-scheduler.add_job(send_weekly_reminder, trigger='cron', day_of_week='sun', hour=12, minute=0)
-scheduler.start()
-
-# ... rest of your app.py code, unchanged ...
-# Include the full `whatsapp_reply()` function from your current working version below this comment.
-# This script appends the scheduling feature to your existing WhatsApp bot logic.
-
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
     return match.group() if match else None
+
+def format_task_list(pending_fields, lang):
+    lines = []
+    for i, field in enumerate(pending_fields, 1):
+        lines.append(f"{i}. {field['name']}")
+    if lang == "en":
+        return "What would you like to report next?\n" + "\n".join(lines)
+    else:
+        return "Apa yang ingin Anda laporkan selanjutnya?\n" + "\n".join(lines)
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_reply():
@@ -61,15 +33,15 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Universal reset
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {
             "step": -2,
             "responses": {},
             "media": {},
             "lang": None,
-            "form": None,
-            "form_type": None
+            "form_type": None,
+            "pending": [],
+            "current": None
         }
         msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
@@ -80,17 +52,17 @@ def whatsapp_reply():
             "responses": {},
             "media": {},
             "lang": None,
-            "form": None,
-            "form_type": None
+            "form_type": None,
+            "pending": [],
+            "current": None
         }
         msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
     state = user_state[sender]
 
-    # Language selection
     if state["step"] == -2:
-        if msg_text in ["1", "indonesian", "bahasa indonesia"]:
+        if msg_text in ["1", "bahasa indonesia"]:
             state["lang"] = "id"
             state["step"] = -1
             msg.body("📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
@@ -102,115 +74,83 @@ def whatsapp_reply():
             msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
         return str(resp)
 
-    # Form type selection
     if state["step"] == -1:
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
-            state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+            form = daily_form_en if state["lang"] == "en" else daily_form_id
+            state["pending"] = form.copy()
             state["step"] = 0
-            msg.body(state["form"][0]["prompt"])
+            msg.body(format_task_list(state["pending"], state["lang"]))
         elif msg_text in ["2", "weekly", "mingguan"]:
-            state["form_type"] = "weekly"
-            state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
-            state["step"] = 0
-            msg.body(state["form"][0]["prompt"])
+            msg.body("⛔ Weekly form must be filled in order.")
         else:
-            if state["lang"] == "id":
-                msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
-            else:
-                msg.body("❓ Reply with 1 for Daily or 2 for Weekly")
+            msg.body("❓ Reply 1 for Daily / Harian or 2 for Weekly / Mingguan")
         return str(resp)
 
-    form = state["form"]
-    step = state["step"]
-
-    if step >= len(form):
-        restart_msg = {
-            "en": "✅ You've already completed the form. Restarting...\n\n🌐 Select a language:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English",
-            "id": "✅ Anda sudah menyelesaikan formulir. Memulai ulang...\n\n🌐 Pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English"
-        }
-        msg.body(restart_msg[state["lang"]])
-        user_state[sender] = {
-            "step": -2,
-            "responses": {},
-            "media": {},
-            "lang": None,
-            "form": None,
-            "form_type": None
-        }
+    # If no current task is active, expect a number to select next field
+    if not state["current"]:
+        try:
+            idx = int(msg_text) - 1
+            state["current"] = state["pending"].pop(idx)
+            msg.body(state["current"]["prompt"])
+        except:
+            msg.body(format_task_list(state["pending"], state["lang"]))
         return str(resp)
 
-    current = form[step]
+    current = state["current"]
     key = current["key"]
     number = extract_number(msg_text)
+    lang = state["lang"]
 
     if number and key not in state["responses"]:
         state["responses"][key] = number
-        print(f"🧮 Saved number for {key}: {number}")
-
     if media_url and key not in state["media"]:
         state["media"][key] = media_url
-        print(f"📷 Saved media for {key}: {media_url}")
 
-    photo_required = current.get("require_photo", True)
+    require_photo = current.get("require_photo", True)
     has_number = key in state["responses"]
-    has_photo = not photo_required or key in state["media"]
+    has_photo = not require_photo or key in state["media"]
 
     if has_number and has_photo:
-        state["step"] += 1
-
-        if state["step"] >= len(form):
+        state["current"] = None
+        if state["pending"]:
+            msg.body(format_task_list(state["pending"], lang))
+        else:
             phone = sender.replace("whatsapp:", "")
-            print(f"📤 Final submission from {phone}")
-
             for k, url in state["media"].items():
                 link = upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
                 if link:
                     state["responses"][f"{k}_photo"] = link
-
             try:
-                if state["form_type"] == "daily":
-                    log_reading(phone, state["responses"])
-                else:
-                    log_weekly(phone, state["responses"])
+                log_reading(phone, state["responses"])
+                thank_you = {
+                    "en": "✅ Thank you for completing the daily form!\n📨 Send any message to start a new one.",
+                    "id": "✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mengisi lagi."
+                }
+                msg.body(thank_you[lang])
             except Exception as e:
                 print(f"❌ Spreadsheet logging error: {e}")
-                msg.body("⚠️ There was a problem logging your data. Please try again.")
-                return str(resp)
-
-            thank_you = {
-                "en": (
-                    "✅ Thank you for completing the form!\n"
-                    "📨 Send any message to start a new one, or type 'exit' to restart."
-                ),
-                "id": (
-                    "✅ Terima kasih telah mengisi formulir!\n"
-                    "📨 Kirim pesan apa pun untuk mengisi lagi, atau ketik 'keluar' untuk mulai ulang."
-                )
-            }
-
-            msg.body(thank_you[state["lang"]])
+                msg.body("⚠️ Error saving your data. Try again later.")
             user_state[sender] = {
                 "step": -2,
                 "responses": {},
                 "media": {},
                 "lang": None,
-                "form": None,
-                "form_type": None
+                "form_type": None,
+                "pending": [],
+                "current": None
             }
-        else:
-            msg.body(form[state["step"]]["prompt"])
     else:
         if not has_number:
             msg.body({
                 "en": f"🔢 Please enter a number for: {current['name']}",
                 "id": f"🔢 Masukkan angka untuk: {current['name']}"
-            }[state["lang"]])
-        elif photo_required and not has_photo:
+            }[lang])
+        elif require_photo and not has_photo:
             msg.body({
                 "en": f"📸 Please upload a photo for: {current['name']}",
                 "id": f"📸 Silakan unggah foto untuk: {current['name']}"
-            }[state["lang"]])
+            }[lang])
 
     return str(resp)
 
