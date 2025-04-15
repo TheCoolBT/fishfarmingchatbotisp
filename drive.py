@@ -32,6 +32,9 @@ TARGET_FOLDER_ID = "1Fgh_v_CG2tYWsQjadY-8Eu832hVHTz_P"
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 
+# In-memory store for first daily reading
+daily_buffer = {}
+
 def upload_photo(field_name, phone, date, file_url):
     print(f"📸 Uploading photo for {field_name} from {phone}")
     try:
@@ -68,11 +71,9 @@ def upload_photo(field_name, phone, date, file_url):
         return None
 
 def log_reading(phone, data_dict):
-    """Log daily form data to daily survey tab"""
     timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
     row = [timestamp]
 
-    # 1. First block: do, ph, temp (value + photo)
     for key in ["do", "ph", "temp"]:
         value = data_dict.get(key, "")
         photo = data_dict.get(f"{key}_photo", "")
@@ -83,12 +84,8 @@ def log_reading(phone, data_dict):
         row.append(value)
         row.append(photo)
 
-    # 2. Two blank columns
     row += ["", ""]
 
-    # 3. Remaining fields:
-    # dead_fish, feed_weight, inv_feed, inv_rest = value + photo
-    # feeding_freq = value only (no photo)
     for key in ["dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"]:
         value = data_dict.get(key, "")
         try:
@@ -105,8 +102,20 @@ def log_reading(phone, data_dict):
     daily_tab.append_row(row)
     print("✅ Row successfully written to Daily Survey Input")
 
+def log_final_average(phone, reading1, reading2):
+    avg = {}
+    for key in ["do", "ph", "temp", "dead_fish", "feeding_freq", "feed_weight", "inv_feed", "inv_rest"]:
+        try:
+            avg[key] = (float(reading1.get(key, 0)) + float(reading2.get(key, 0))) / 2
+        except:
+            avg[key] = reading2.get(key, "")  # fallback to second if averaging fails
+
+    for key in ["do", "ph", "temp", "dead_fish", "feed_weight", "inv_feed", "inv_rest"]:
+        avg[f"{key}_photo"] = reading2.get(f"{key}_photo", "")
+
+    log_reading(phone, avg)
+
 def log_weekly(phone, data_dict):
-    """Log weekly form data to weekly survey tab"""
     timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
     row = [timestamp]
 
