@@ -33,30 +33,17 @@ def whatsapp_reply():
         msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
-    if msg_text == "test daily":
+    if msg_text == "test":
         user_state[sender] = {
-            "lang": "en",
-            "form_type": "daily",
-            "form": daily_form_en,
+            "lang": None,
+            "form_type": None,
             "responses": {},
             "media": {},
-            "stage": "in_progress"
-        }
-        send_field_list(msg, user_state[sender])
+            "stage": "lang"
+    }
+        msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
-    if msg_text == "test weekly":
-        user_state[sender] = {
-            "lang": "en",
-            "form_type": "weekly",
-            "form": weekly_form_en,
-            "responses": {},
-            "media": {},
-            "step": 0,
-            "stage": "weekly_in_progress"
-        }
-        msg.body(user_state[sender]["form"][0]["prompt"])
-        return str(resp)
 
     if sender not in user_state:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
