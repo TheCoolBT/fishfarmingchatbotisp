@@ -28,33 +28,42 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
+    # Handle reset
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
-        msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        msg.body("🔄 Form restarted.\n\U0001f310 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        return str(resp)
+
+    # Test trigger
+    if msg_text in ["test daily", "test weekly"]:
+        user_state[sender] = {
+            "lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang",
+            "scheduled_test": msg_text
+        }
+        form_type = "daily" if msg_text == "test daily" else "weekly"
+        msg.body(f"\u23f0 Test Reminder:\nIt's time to fill out the {form_type} form! / Saatnya mengisi formulir {form_type}!\n\n\U0001f310 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
     if sender not in user_state:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
-        msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        msg.body("\U0001f310 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
     state = user_state[sender]
 
-    # Language selection
     if state["stage"] == "lang":
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
             state["stage"] = "form_select"
-            msg.body("📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
+            msg.body("\ud83d\udccb Pilih jenis formulir:\n1. Harian\n2. Mingguan")
         elif msg_text in ["2", "english"]:
             state["lang"] = "en"
             state["stage"] = "form_select"
-            msg.body("📋 Please choose a form type:\n1. Daily\n2. Weekly")
+            msg.body("\ud83d\udccb Please choose a form type:\n1. Daily\n2. Weekly")
         else:
-            msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
+            msg.body("\u2753 Reply with 1 for \ud83c\uddee\ud83c\udde9 Bahasa Indonesia or 2 for \ud83c\uddec\ud83c\udde7 English")
         return str(resp)
 
-    # Form type selection
     if state["stage"] == "form_select":
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
@@ -72,10 +81,9 @@ def whatsapp_reply():
             state["stage"] = "weekly_in_progress"
             msg.body(state["form"][0]["prompt"])
         else:
-            msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan" if state["lang"] == "id" else "❓ Reply with 1 for Daily or 2 for Weekly")
+            msg.body("\u2753 Balas dengan 1 untuk Harian atau 2 untuk Mingguan" if state["lang"] == "id" else "\u2753 Reply with 1 for Daily or 2 for Weekly")
         return str(resp)
 
-    # Weekly form fixed sequence
     if state.get("stage") == "weekly_in_progress":
         form = state["form"]
         step = state["step"]
@@ -103,11 +111,11 @@ def whatsapp_reply():
                     if link:
                         state["responses"][f"{k}_photo"] = link
                 log_weekly(phone, state["responses"])
-                msg.body("✅ Terima kasih telah mengisi formulir!\n📨 Kirim pesan untuk memulai kembali." if state["lang"] == "id" else "✅ Thank you! Form submitted.\n📨 Send any message to start over.")
+                msg.body("\u2705 Terima kasih telah mengisi formulir!\n\ud83d\udce8 Kirim pesan untuk memulai kembali." if state["lang"] == "id" else "\u2705 Thank you! Form submitted.\n\ud83d\udce8 Send any message to start over.")
                 user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             return str(resp)
         else:
-            msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "📸 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "🔢 Enter number for: {}".format(current["name"]) if not has_number else "📸 Upload photo for: {}".format(current["name"]))
+            msg.body("\ud83d\udd22 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "\ud83d\udcf8 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "\ud83d\udd22 Enter number for: {}".format(current["name"]) if not has_number else "\ud83d\udcf8 Upload photo for: {}".format(current["name"]))
             return str(resp)
 
     # Daily form unordered
@@ -115,7 +123,6 @@ def whatsapp_reply():
     pending = get_pending_fields(state["responses"], form)
 
     if state["stage"] == "in_progress":
-        # Handle numbered selection or data input
         if msg_text.isdigit() and 1 <= int(msg_text) <= len(pending):
             selected = pending[int(msg_text) - 1]
             state["current"] = selected["key"]
@@ -144,13 +151,13 @@ def whatsapp_reply():
                         if link:
                             state["responses"][f"{k}_photo"] = link
                     log_reading(phone, state["responses"])
-                    msg.body("✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang." if state["lang"] == "id" else "✅ Thank you for completing the daily form!\n📨 Send any message to restart.")
+                    msg.body("\u2705 Terima kasih telah mengisi formulir harian!\n\ud83d\udce8 Kirim pesan apa pun untuk mulai ulang." if state["lang"] == "id" else "\u2705 Thank you for completing the daily form!\n\ud83d\udce8 Send any message to restart.")
                     user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             else:
                 if not has_number:
-                    msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if state["lang"] == "id" else "🔢 Enter number for: {}".format(current["name"]))
+                    msg.body("\ud83d\udd22 Masukkan angka untuk: {}".format(current["name"]) if state["lang"] == "id" else "\ud83d\udd22 Enter number for: {}".format(current["name"]))
                 elif photo_required and not has_photo:
-                    msg.body("📸 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "📸 Upload photo for: {}".format(current["name"]))
+                    msg.body("\ud83d\udcf8 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "\ud83d\udcf8 Upload photo for: {}".format(current["name"]))
         else:
             send_field_list(msg, state)
 
@@ -161,7 +168,7 @@ def send_field_list(msg, state):
     pending = get_pending_fields(state["responses"], form)
     if not pending:
         return
-    body = "❓ What would you like to answer next?\n" if state["lang"] == "en" else "❓ Apa yang ingin Anda jawab selanjutnya?\n"
+    body = "\u2753 What would you like to answer next?\n" if state["lang"] == "en" else "\u2753 Apa yang ingin Anda jawab selanjutnya?\n"
     for i, field in enumerate(pending, 1):
         body += f"{i}. {field['name']}\n"
     msg.body(body.strip())
