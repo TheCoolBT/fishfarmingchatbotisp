@@ -1,9 +1,11 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 from dotenv import load_dotenv
-from drive import log_reading, log_weekly, upload_photo, log_final_average
+from drive import log_reading, log_weekly, upload_photo
 from forms.daily_form import daily_form_en, daily_form_id
 from forms.weekly_form import weekly_form_en, weekly_form_id
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import os
 import re
@@ -11,7 +13,39 @@ import re
 load_dotenv()
 app = Flask(__name__)
 user_state = {}
-daily_sessions = {}
+
+# Twilio client setup
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+client = Client(TWILIO_SID, TWILIO_AUTH)
+
+# Simple message sender
+def send_whatsapp_message(to, body):
+    client.messages.create(
+        from_="whatsapp:" + TWILIO_NUMBER,
+        to="whatsapp:" + to,
+        body=body
+    )
+
+# Scheduled reminders
+def send_daily_reminder():
+    recipients = ["+18027600986"]  # ← replace with real numbers
+    for number in recipients:
+        send_whatsapp_message(number, "🔔 It's time to fill out the daily form!\n📨 Sekarang waktunya mengisi formulir harian!")
+
+def send_weekly_reminder():
+    recipients = ["+18027600986"]
+    for number in recipients:
+        send_whatsapp_message(number, "📆 Weekly form reminder!\n⏰ Jangan lupa isi formulir mingguan hari ini!")
+
+# Scheduler setup
+def schedule_jobs():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)  # 5:30 AM UTC+7
+    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)   # 2:30 PM UTC+7
+    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)  # 12 PM UTC+7 Sunday
+    scheduler.start()
 
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
@@ -28,22 +62,17 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
+    # Reset form on "exit" or "keluar"
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
         msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
+    # Start flow with "test"
     if msg_text == "test":
-        user_state[sender] = {
-            "lang": None,
-            "form_type": None,
-            "responses": {},
-            "media": {},
-            "stage": "lang"
-    }
+        user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
         msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
-
 
     if sender not in user_state:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
@@ -52,7 +81,6 @@ def whatsapp_reply():
 
     state = user_state[sender]
 
-    # Language selection
     if state["stage"] == "lang":
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
@@ -66,7 +94,6 @@ def whatsapp_reply():
             msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
         return str(resp)
 
-    # Form type selection
     if state["stage"] == "form_select":
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
@@ -87,7 +114,6 @@ def whatsapp_reply():
             msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan" if state["lang"] == "id" else "❓ Reply with 1 for Daily or 2 for Weekly")
         return str(resp)
 
-    # Weekly form fixed sequence
     if state.get("stage") == "weekly_in_progress":
         form = state["form"]
         step = state["step"]
@@ -122,7 +148,6 @@ def whatsapp_reply():
             msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "📸 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "🔢 Enter number for: {}".format(current["name"]) if not has_number else "📸 Upload photo for: {}".format(current["name"]))
             return str(resp)
 
-    # Daily form unordered
     form = daily_form_en if state["lang"] == "en" else daily_form_id
     pending = get_pending_fields(state["responses"], form)
 
@@ -178,5 +203,8 @@ def send_field_list(msg, state):
     msg.body(body.strip())
 
 if __name__ == '__main__':
+    schedule_jobs()
+    # Uncomment below to test sending right now
+    # send_daily_reminder()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
