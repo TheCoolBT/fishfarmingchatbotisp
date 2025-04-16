@@ -20,7 +20,6 @@ TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 client = Client(TWILIO_SID, TWILIO_AUTH)
 
-# Simple message sender
 def send_whatsapp_message(to, body):
     client.messages.create(
         from_="whatsapp:" + TWILIO_NUMBER,
@@ -28,23 +27,38 @@ def send_whatsapp_message(to, body):
         body=body
     )
 
-# Scheduled reminders
 def send_daily_reminder():
-    recipients = ["+18027600986"]  # ← replace with real numbers
+    recipients = ["+18027600986"]
     for number in recipients:
-        send_whatsapp_message(number, "🔔 It's time to fill out the daily form!\n📨 Sekarang waktunya mengisi formulir harian!")
+        send_whatsapp_message(number, "🔔 It's time to fill out the daily form!")
+        user_state[number] = {
+            "lang": None,
+            "form_type": "daily",
+            "responses": {},
+            "media": {},
+            "stage": "lang_direct_daily"
+        }
+        send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
 
 def send_weekly_reminder():
     recipients = ["+18027600986"]
     for number in recipients:
-        send_whatsapp_message(number, "📆 Weekly form reminder!\n⏰ Jangan lupa isi formulir mingguan hari ini!")
+        send_whatsapp_message(number, "📆 Weekly form reminder! Please respond to start.")
+        user_state[number] = {
+            "lang": None,
+            "form_type": "weekly",
+            "responses": {},
+            "media": {},
+            "step": 0,
+            "stage": "lang_direct_weekly"
+        }
+        send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
 
-# Scheduler setup
 def schedule_jobs():
     scheduler = BackgroundScheduler()
-    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)  # 5:30 AM UTC+7
-    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)   # 2:30 PM UTC+7
-    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)  # 12 PM UTC+7 Sunday
+    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)
+    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)
+    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)
     scheduler.start()
 
 def extract_number(text):
@@ -56,62 +70,65 @@ def get_pending_fields(responses, form):
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_reply():
-    sender = request.form.get("From")
+    sender = request.form.get("From").replace("whatsapp:", "")
     msg_text = request.form.get("Body", "").strip().lower()
     media_url = request.form.get("MediaUrl0")
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Reset form on "exit" or "keluar"
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
         msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
-    # Start flow with "test"
     if msg_text == "test":
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
         msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
         return str(resp)
 
     if sender not in user_state:
-        user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
-        msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        msg.body("❓ Please wait for a scheduled reminder or type 'test' to start manually.")
         return str(resp)
 
     state = user_state[sender]
 
-    if state["stage"] == "lang":
+    if state["stage"].startswith("lang"):
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
-            state["stage"] = "form_select"
-            msg.body("📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
         elif msg_text in ["2", "english"]:
             state["lang"] = "en"
-            state["stage"] = "form_select"
-            msg.body("📋 Please choose a form type:\n1. Daily\n2. Weekly")
         else:
             msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
+            return str(resp)
+
+        if state["stage"] == "lang":
+            state["stage"] = "form_select"
+            msg.body("📋 Please choose a form type:\n1. Daily\n2. Weekly" if state["lang"] == "en" else "📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
+        elif state["stage"] == "lang_direct_daily":
+            state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+            state["stage"] = "in_progress"
+            send_field_list(msg, state)
+        elif state["stage"] == "lang_direct_weekly":
+            state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
+            state["stage"] = "weekly_in_progress"
+            state["step"] = 0
+            msg.body(state["form"][0]["prompt"])
         return str(resp)
 
     if state["stage"] == "form_select":
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
             state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
-            state["responses"] = {}
-            state["media"] = {}
             state["stage"] = "in_progress"
             send_field_list(msg, state)
         elif msg_text in ["2", "weekly", "mingguan"]:
             state["form_type"] = "weekly"
             state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
-            state["responses"] = {}
-            state["media"] = {}
-            state["step"] = 0
             state["stage"] = "weekly_in_progress"
+            state["step"] = 0
             msg.body(state["form"][0]["prompt"])
         else:
-            msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan" if state["lang"] == "id" else "❓ Reply with 1 for Daily or 2 for Weekly")
+            msg.body("❓ Reply with 1 for Daily or 2 for Weekly" if state["lang"] == "en" else "❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
         return str(resp)
 
     if state.get("stage") == "weekly_in_progress":
@@ -135,17 +152,16 @@ def whatsapp_reply():
             if state["step"] < len(form):
                 msg.body(form[state["step"]]["prompt"])
             else:
-                phone = sender.replace("whatsapp:", "")
                 for k, url in state["media"].items():
-                    link = upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
+                    link = upload_photo(field_name=k, phone=sender, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
                     if link:
                         state["responses"][f"{k}_photo"] = link
-                log_weekly(phone, state["responses"])
-                msg.body("✅ Terima kasih telah mengisi formulir!\n📨 Kirim pesan untuk memulai kembali." if state["lang"] == "id" else "✅ Thank you! Form submitted.\n📨 Send any message to start over.")
+                log_weekly(sender, state["responses"])
+                msg.body("✅ Thank you! Form submitted.\n📨 Send any message to start over." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir!\n📨 Kirim pesan untuk memulai kembali.")
                 user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             return str(resp)
         else:
-            msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "📸 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "🔢 Enter number for: {}".format(current["name"]) if not has_number else "📸 Upload photo for: {}".format(current["name"]))
+            msg.body("🔢 Enter number for: {}".format(current["name"]) if not has_number else "📸 Upload photo for: {}".format(current["name"]))
             return str(resp)
 
     form = daily_form_en if state["lang"] == "en" else daily_form_id
@@ -174,26 +190,25 @@ def whatsapp_reply():
                 if pending:
                     send_field_list(msg, state)
                 else:
-                    phone = sender.replace("whatsapp:", "")
                     for k, url in state["media"].items():
-                        link = upload_photo(field_name=k, phone=phone, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
+                        link = upload_photo(field_name=k, phone=sender, date=datetime.now().strftime("%Y-%m-%d"), file_url=url)
                         if link:
                             state["responses"][f"{k}_photo"] = link
-                    log_reading(phone, state["responses"])
-                    msg.body("✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang." if state["lang"] == "id" else "✅ Thank you for completing the daily form!\n📨 Send any message to restart.")
+                    log_reading(sender, state["responses"])
+                    msg.body("✅ Thank you for completing the daily form!\n📨 Send any message to restart." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang.")
                     user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             else:
                 if not has_number:
-                    msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if state["lang"] == "id" else "🔢 Enter number for: {}".format(current["name"]))
+                    msg.body("🔢 Enter number for: {}".format(current["name"]))
                 elif photo_required and not has_photo:
-                    msg.body("📸 Unggah foto untuk: {}".format(current["name"]) if state["lang"] == "id" else "📸 Upload photo for: {}".format(current["name"]))
+                    msg.body("📸 Upload photo for: {}".format(current["name"]))
         else:
             send_field_list(msg, state)
 
     return str(resp)
 
 def send_field_list(msg, state):
-    form = state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+    form = state["form"]
     pending = get_pending_fields(state["responses"], form)
     if not pending:
         return
@@ -203,8 +218,7 @@ def send_field_list(msg, state):
     msg.body(body.strip())
 
 if __name__ == '__main__':
-    send_daily_reminder()  # 🔥 Send reminder immediately on boot
-    schedule_jobs()        # Then start normal cron-based jobs
+    send_daily_reminder()
+    schedule_jobs()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
