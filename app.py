@@ -203,8 +203,8 @@ def send_field_list(msg, state):
     msg.body(body.strip())
 
 if __name__ == '__main__':
-    schedule_jobs()
-    # Uncomment below to test sending right now
-    # send_daily_reminder()
+    send_daily_reminder()  # 🔥 Send reminder immediately on boot
+    schedule_jobs()        # Then start normal cron-based jobs
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
