@@ -6,6 +6,7 @@ from drive import log_reading, log_weekly, upload_photo
 from forms.daily_form import daily_form_en, daily_form_id
 from forms.weekly_form import weekly_form_en, weekly_form_id
 from apscheduler.schedulers.background import BackgroundScheduler
+from troubleshooting import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
 from datetime import datetime
 import os
 import re
@@ -27,10 +28,23 @@ def send_whatsapp_message(to, body):
         body=body
     )
 
+def notify_experts(user_phone, data):
+    alerts = check_out_of_range(data)
+    if alerts:
+        summary = f"📡 ALERT: Out-of-range readings from {user_phone}:\n"
+        for k, v in alerts.items():
+            summary += f"- {k.upper()}: {v} (out of SOP range)\n"
+
+        recommendations = generate_recommendations(alerts)
+        rec_msg = "\n💡 AI-Generated Suggestions:\n" + "\n".join(recommendations)
+
+        for expert in EXPERT_NUMBERS:
+            send_whatsapp_message(expert, summary + rec_msg)
+
 def send_daily_reminder():
     recipients = ["+18027600986"]
     for number in recipients:
-        send_whatsapp_message(number, "🔔 It's time to fill out the daily form!")
+        send_whatsapp_message(number, "🔔 Sekarang waktunya mengisi formulir harian!\n📨 It's time to fill out the daily form!")
         user_state[number] = {
             "lang": None,
             "form_type": "daily",
@@ -43,7 +57,7 @@ def send_daily_reminder():
 def send_weekly_reminder():
     recipients = ["+18027600986"]
     for number in recipients:
-        send_whatsapp_message(number, "📆 Weekly form reminder! Please respond to start.")
+        send_whatsapp_message(number, "📆 Jangan lupa isi formulir mingguan hari ini!\n📆 Don't forget to fill out the weekly form today!")
         user_state[number] = {
             "lang": None,
             "form_type": "weekly",
@@ -84,6 +98,16 @@ def whatsapp_reply():
     if msg_text == "test":
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
         msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        return str(resp)
+
+    if msg_text == "test troubleshoot":
+        fake_data = {
+            "do": "3.2",  # low on purpose
+            "ph": "7.2",
+            "temperature": "28.0"
+        }
+        notify_experts(sender, fake_data)
+        msg.body("✅ Expert alert test sent with fake DO value (3.2).")
         return str(resp)
 
     if sender not in user_state:
@@ -195,6 +219,7 @@ def whatsapp_reply():
                         if link:
                             state["responses"][f"{k}_photo"] = link
                     log_reading(sender, state["responses"])
+                    notify_experts(sender, state["responses"])
                     msg.body("✅ Thank you for completing the daily form!\n📨 Send any message to restart." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang.")
                     user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             else:
