@@ -9,3 +9,4 @@ google-auth-oauthlib
 requests
 pytz
 apscheduler
+openai>=1.0.0
