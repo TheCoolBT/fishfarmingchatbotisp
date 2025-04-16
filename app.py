@@ -6,11 +6,10 @@ from drive import log_reading, log_weekly, upload_photo
 from forms.daily_form import daily_form_en, daily_form_id
 from forms.weekly_form import weekly_form_en, weekly_form_id
 from apscheduler.schedulers.background import BackgroundScheduler
-from troubleshooting import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
+from ai_helper import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
 from datetime import datetime
 import os
 import re
-
 load_dotenv()
 app = Flask(__name__)
 user_state = {}
