@@ -137,3 +137,27 @@ def log_weekly(phone, data_dict):
     print(row)
     weekly_tab.append_row(row)
     print("✅ Row successfully written to Weekly Survey Input")
+
+
+def get_recent_trends(n=3):
+    """Fetch and format last n rows of daily readings as AI prompt context."""
+    try:
+        records = daily_tab.get_all_records()
+        if not records:
+            return "No recent data available."
+
+        recent = records[-n:]
+        trend_lines = []
+        for row in recent:
+            timestamp = row.get("Timestamp", "Unknown time")
+            do = row.get("DATA 1 - DO (mg/L)", "?")
+            ph = row.get("DATA 3 - pH", "?")
+            temp = row.get("DATA 5 - Temp (°C)", "?")
+            deaths = row.get("DATA 9 - Fish Deaths", "?")
+            trend_lines.append(
+                f"{timestamp} — DO: {do}, pH: {ph}, Temp: {temp}, Deaths: {deaths}"
+            )
+
+        return "\n".join(trend_lines)
+    except Exception as e:
+        return f"⚠️ Error getting trends: {e}"
