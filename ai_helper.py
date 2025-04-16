@@ -41,7 +41,7 @@ def generate_recommendations(alerts):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",  # Use "gpt-3.5-turbo" if needed
+            model="gpt-3.5-turbo",  
             messages=[{"role": "user", "content": prompt}],
             max_tokens=250,
             temperature=0.5
