@@ -41,7 +41,7 @@ def notify_experts(user_phone, data):
             send_whatsapp_message(expert, summary + rec_msg)
 
 def send_daily_reminder():
-    recipients = ["+18027600986"]
+    recipients = ["+18027600986","+628170073790"]
     for number in recipients:
         send_whatsapp_message(number, "🔔 Sekarang waktunya mengisi formulir harian!\n📨 It's time to fill out the daily form!")
         user_state[number] = {
@@ -54,7 +54,7 @@ def send_daily_reminder():
         send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
 
 def send_weekly_reminder():
-    recipients = ["+18027600986"]
+    recipients = ["+18027600986","+6285692351792","+628170073790"]
     for number in recipients:
         send_whatsapp_message(number, "📆 Jangan lupa isi formulir mingguan hari ini!\n📆 Don't forget to fill out the weekly form today!")
         user_state[number] = {

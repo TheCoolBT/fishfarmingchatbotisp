@@ -5,7 +5,7 @@ from drive import get_recent_trends
 
 
 # Twilio numbers of experts who should receive alerts
-EXPERT_NUMBERS = ["+18027600986"]
+EXPERT_NUMBERS = ["+18027600986","+628170073790"]
 
 # Initialize OpenAI client with API key from environment
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
