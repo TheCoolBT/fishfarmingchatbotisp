@@ -222,10 +222,13 @@ def whatsapp_reply():
                     msg.body("✅ Thank you for completing the daily form!\n📨 Send any message to restart." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang.")
                     user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             else:
-                if not has_number:
+                if key == "general_video" and not has_photo:
+                    msg.body("📹 Please upload a video of the pond water." if state["lang"] == "en" else "📹 Silakan unggah video air kolam.")
+                elif not has_number:
                     msg.body("🔢 Enter number for: {}".format(current["name"]))
                 elif photo_required and not has_photo:
                     msg.body("📸 Upload photo for: {}".format(current["name"]))
+
         else:
             send_field_list(msg, state)
 

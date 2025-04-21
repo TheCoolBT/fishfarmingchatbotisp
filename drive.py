@@ -36,7 +36,7 @@ TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 daily_buffer = {}
 
 def upload_photo(field_name, phone, date, file_url):
-    print(f"📸 Uploading photo for {field_name} from {phone}")
+    print(f"📸 Uploading {field_name} from {phone}")
     try:
         response = requests.get(
             file_url,
@@ -44,12 +44,22 @@ def upload_photo(field_name, phone, date, file_url):
             headers={"User-Agent": "Mozilla/5.0"}
         )
         if response.status_code != 200:
-            print(f"❌ Failed to download image. Status: {response.status_code}")
+            print(f"❌ Failed to download media. Status: {response.status_code}")
             return None
 
-        filename = f"{field_name.upper()} {date}.jpg"
-        media = MediaIoBaseUpload(io.BytesIO(response.content), mimetype='image/jpeg')
+        # Check if it's a video
+        is_video = file_url.endswith(".mp4") or "video" in response.headers.get("Content-Type", "")
+        
+        # Set filename
+        if field_name == "general_video":
+            filename = f"WATER CONDITIONS {date}.mp4"
+        else:
+            filename = f"{field_name.upper()} {date}.jpg"
+
+        # Use same folder (TARGET_FOLDER_ID)
+        media = MediaIoBaseUpload(io.BytesIO(response.content), mimetype='video/mp4' if is_video else 'image/jpeg')
         file_metadata = {'name': filename, 'parents': [TARGET_FOLDER_ID]}
+
         uploaded_file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
@@ -69,6 +79,7 @@ def upload_photo(field_name, phone, date, file_url):
     except Exception as e:
         print(f"❌ Upload error: {e}")
         return None
+
 
 def log_reading(phone, data_dict):
     timestamp = datetime.now().strftime("%-m/%-d/%Y %H:%M:%S")
