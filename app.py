@@ -8,6 +8,7 @@ from forms.weekly_form import weekly_form_en, weekly_form_id
 from apscheduler.schedulers.background import BackgroundScheduler
 from ai_helper import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
 from datetime import datetime
+import random
 import os
 import re
 load_dotenv()
@@ -40,9 +41,11 @@ def notify_experts(user_phone, data):
         "inv_rest": "Jumlah Pakan Baru",
     }
 
-    # 📝 Laporan harian lengkap
-    summary = f"📡 *Laporan Harian* dari {user_phone}:\n"
+    summary = ""
+    if "UJI COBA" in user_phone:
+        summary += "🧪 *PESAN INI HANYA UJI COBA*\n\n"
 
+    summary += f"📡 *Laporan Harian* dari {user_phone}:\n"
     for key, label in all_keys.items():
         if key not in data or data[key] == "":
             continue
@@ -82,6 +85,20 @@ def notify_experts(user_phone, data):
         send_whatsapp_message(expert, full_message)
 
 
+def generate_fake_daily_data():
+    return {
+        "do": round(random.uniform(3.0, 8.5), 1),
+        "ph": round(random.uniform(6.0, 8.5), 1),
+        "temperature": round(random.uniform(25, 33), 1),
+        "dead_fish": random.randint(0, 5),
+        "feeding_freq": random.choice([2, 3, 4]),
+        "feed_weight": random.randint(80, 150),
+        "inv_feed": random.randint(0, 50),
+        "inv_rest": random.randint(50, 300),
+        "general_video_photo": "https://drive.google.com/uc?id=fake-video-link-test"  # fake placeholder
+    }
+
+
 def send_daily_reminder():
     recipients = ["+18027600986","+628170073790"]
     for number in recipients:
@@ -109,12 +126,35 @@ def send_weekly_reminder():
         }
         send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
 
+
+def send_reactivation_reminder():
+    recipients = ["+18027600986", "+628170073790"]  # Add more numbers as needed
+    for number in recipients:
+        send_whatsapp_message(
+            number,
+            "🔄 *Pengingat Aktivasi Bot*\n"
+            "Silakan kirim *join sense-believed* ke bot ini untuk menjaga koneksi tetap aktif. "
+            "Pengingat ini akan muncul setiap 48 jam."
+        )
+
 def schedule_jobs():
     scheduler = BackgroundScheduler()
-    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)
-    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)
-    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)
+
+    # Daily & weekly reminders
+    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)  # 5:30 AM UTC+7
+    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)   # 2:30 PM UTC+7
+    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)  # 12 PM UTC+7
+
+    # 🔁 Reactivation message every 48 hours at 8:00 AM UTC+7 (which is 1:00 AM UTC)
+    scheduler.add_job(
+        send_reactivation_reminder,
+        'interval',
+        hours=48,
+        start_date='2025-04-17T01:00:00'  # Start at 1:00 AM UTC = 8:00 AM UTC+7
+    )
+
     scheduler.start()
+
 
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
@@ -122,6 +162,17 @@ def extract_number(text):
 
 def get_pending_fields(responses, form):
     return [f for f in form if f["key"] not in responses]
+
+def send_field_list(msg, state):
+    form = state["form"]
+    pending = get_pending_fields(state["responses"], form)
+    if not pending:
+        return
+    body = "❓ Apa yang ingin Anda jawab selanjutnya?\n"
+    for i, field in enumerate(pending, 1):
+        body += f"{i}. {field['name']}\n"
+    msg.body(body.strip())
+
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_reply():
@@ -133,26 +184,32 @@ def whatsapp_reply():
 
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
-        msg.body("🔄 Form restarted.\n🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        msg.body("🔄 Formulir diulang.\n🌐 Pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia")
         return str(resp)
 
     if msg_text == "test":
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
-        msg.body("🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
+        msg.body("🌐 Pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia")
         return str(resp)
 
     if msg_text == "test troubleshoot":
         fake_data = {
-            "do": "3.2",  # low on purpose
+            "do": "3.2",  # sengaja di bawah ambang
             "ph": "7.2",
             "temperature": "28.0"
         }
         notify_experts(sender, fake_data)
-        msg.body("✅ Expert alert test sent with fake DO value (3.2).")
+        msg.body("✅ Pengujian alert teknisi terkirim dengan nilai DO = 3.2")
+        return str(resp)
+
+    if msg_text == "test health status":
+        fake_data = generate_fake_daily_data()
+        notify_experts(sender + " (UJI COBA)", fake_data)
+        msg.body("✅ Laporan uji coba kesehatan harian dikirim ke teknisi.")
         return str(resp)
 
     if sender not in user_state:
-        msg.body("❓ Please wait for a scheduled reminder or type 'test' to start manually.")
+        msg.body("❓ Tunggu pengingat terjadwal atau ketik 'test' untuk memulai secara manual.")
         return str(resp)
 
     state = user_state[sender]
@@ -160,21 +217,19 @@ def whatsapp_reply():
     if state["stage"].startswith("lang"):
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
-        elif msg_text in ["2", "english"]:
-            state["lang"] = "en"
         else:
-            msg.body("❓ Reply with 1 for 🇮🇩 Bahasa Indonesia or 2 for 🇬🇧 English")
+            msg.body("❓ Balas dengan 1 untuk Bahasa Indonesia")
             return str(resp)
 
         if state["stage"] == "lang":
             state["stage"] = "form_select"
-            msg.body("📋 Please choose a form type:\n1. Daily\n2. Weekly" if state["lang"] == "en" else "📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
+            msg.body("📋 Pilih jenis formulir:\n1. Harian\n2. Mingguan")
         elif state["stage"] == "lang_direct_daily":
-            state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+            state["form"] = daily_form_id
             state["stage"] = "in_progress"
             send_field_list(msg, state)
         elif state["stage"] == "lang_direct_weekly":
-            state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
+            state["form"] = weekly_form_id
             state["stage"] = "weekly_in_progress"
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
@@ -183,17 +238,17 @@ def whatsapp_reply():
     if state["stage"] == "form_select":
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
-            state["form"] = daily_form_en if state["lang"] == "en" else daily_form_id
+            state["form"] = daily_form_id
             state["stage"] = "in_progress"
             send_field_list(msg, state)
         elif msg_text in ["2", "weekly", "mingguan"]:
             state["form_type"] = "weekly"
-            state["form"] = weekly_form_en if state["lang"] == "en" else weekly_form_id
+            state["form"] = weekly_form_id
             state["stage"] = "weekly_in_progress"
             state["step"] = 0
             msg.body(state["form"][0]["prompt"])
         else:
-            msg.body("❓ Reply with 1 for Daily or 2 for Weekly" if state["lang"] == "en" else "❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
+            msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
         return str(resp)
 
     if state.get("stage") == "weekly_in_progress":
@@ -222,14 +277,15 @@ def whatsapp_reply():
                     if link:
                         state["responses"][f"{k}_photo"] = link
                 log_weekly(sender, state["responses"])
-                msg.body("✅ Thank you! Form submitted.\n📨 Send any message to start over." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir!\n📨 Kirim pesan untuk memulai kembali.")
+                msg.body("✅ Terima kasih! Formulir mingguan selesai.\n📨 Kirim pesan apa pun untuk mulai ulang.")
                 user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             return str(resp)
         else:
-            msg.body("🔢 Enter number for: {}".format(current["name"]) if not has_number else "📸 Upload photo for: {}".format(current["name"]))
+            msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "📸 Unggah foto untuk: {}".format(current["name"]))
             return str(resp)
 
-    form = daily_form_en if state["lang"] == "en" else daily_form_id
+    # Harian (unordered)
+    form = daily_form_id
     pending = get_pending_fields(state["responses"], form)
 
     if state["stage"] == "in_progress":
@@ -261,30 +317,20 @@ def whatsapp_reply():
                             state["responses"][f"{k}_photo"] = link
                     log_reading(sender, state["responses"])
                     notify_experts(sender, state["responses"])
-                    msg.body("✅ Thank you for completing the daily form!\n📨 Send any message to restart." if state["lang"] == "en" else "✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang.")
+                    msg.body("✅ Terima kasih telah mengisi formulir harian!\n📨 Kirim pesan apa pun untuk mulai ulang.")
                     user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
             else:
                 if key == "general_video" and not has_photo:
-                    msg.body("📹 Please upload a video of the pond water." if state["lang"] == "en" else "📹 Silakan unggah video air kolam.")
+                    msg.body("📹 Silakan unggah video air kolam.")
                 elif not has_number:
-                    msg.body("🔢 Enter number for: {}".format(current["name"]))
+                    msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]))
                 elif photo_required and not has_photo:
-                    msg.body("📸 Upload photo for: {}".format(current["name"]))
-
+                    msg.body("📸 Unggah foto untuk: {}".format(current["name"]))
         else:
             send_field_list(msg, state)
 
     return str(resp)
 
-def send_field_list(msg, state):
-    form = state["form"]
-    pending = get_pending_fields(state["responses"], form)
-    if not pending:
-        return
-    body = "❓ What would you like to answer next?\n" if state["lang"] == "en" else "❓ Apa yang ingin Anda jawab selanjutnya?\n"
-    for i, field in enumerate(pending, 1):
-        body += f"{i}. {field['name']}\n"
-    msg.body(body.strip())
 
 if __name__ == '__main__':
     send_daily_reminder()
