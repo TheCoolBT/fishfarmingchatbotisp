@@ -24,7 +24,7 @@ def check_out_of_range(data):
             continue
     return alerts
 
-def generate_recommendations(alerts):
+def generate_recommendations(alerts, lang="en"):
     if not alerts:
         return []
 
@@ -32,10 +32,16 @@ def generate_recommendations(alerts):
     trend_text = get_recent_trends()
 
     # Build the prompt
-    prompt = (
-        "You are an aquaculture technician AI. Based on the following out-of-range water quality readings and recent farm trends, "
-        "generate hypotheses and troubleshooting actions. Respond in bullet points.\n\n"
-    )
+    if lang == "id":
+        prompt = (
+            "Kamu adalah AI teknisi akuakultur. Berdasarkan data kualitas air di bawah ini (yang berada di luar ambang batas) "
+            "dan tren data terbaru dari tambak, buat hipotesis dan saran perbaikan. Jawab dalam bentuk poin-poin.\n\n"
+        )
+    else:
+        prompt = (
+            "You are an aquaculture technician AI. Based on the following out-of-range water quality readings and recent farm trends, "
+            "generate hypotheses and troubleshooting actions. Respond in bullet points.\n\n"
+        )
 
     for key, val in alerts.items():
         prompt += f"- {key.upper()}: {val}\n"
@@ -53,5 +59,5 @@ def generate_recommendations(alerts):
         content = response.choices[0].message.content
         return content.strip().split("\n")
     except Exception as e:
-        return [f"⚠️ AI error: {e}"]
+        return [f"⚠️ Kesalahan AI: {e}" if lang == "id" else f"⚠️ AI error: {e}"]
 
