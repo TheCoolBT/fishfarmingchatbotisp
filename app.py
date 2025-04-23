@@ -29,16 +29,58 @@ def send_whatsapp_message(to, body):
 
 def notify_experts(user_phone, data):
     alerts = check_out_of_range(data)
-    if alerts:
-        summary = f"📡 ALERT: Out-of-range readings from {user_phone}:\n"
-        for k, v in alerts.items():
-            summary += f"- {k.upper()}: {v} (out of SOP range)\n"
+    all_keys = {
+        "do": "DO (mg/L)",
+        "ph": "pH",
+        "temperature": "Suhu (°C)",
+        "dead_fish": "Ikan Mati",
+        "feeding_freq": "Frekuensi Pemberian Pakan",
+        "feed_weight": "Berat Pakan (gram)",
+        "inv_feed": "Jumlah Pakan Tersisa",
+        "inv_rest": "Jumlah Pakan Baru",
+    }
 
-        recommendations = generate_recommendations(alerts)
-        rec_msg = "\n💡 AI-Generated Suggestions:\n" + "\n".join(recommendations)
+    # 📝 Laporan harian lengkap
+    summary = f"📡 *Laporan Harian* dari {user_phone}:\n"
 
-        for expert in EXPERT_NUMBERS:
-            send_whatsapp_message(expert, summary + rec_msg)
+    for key, label in all_keys.items():
+        if key not in data or data[key] == "":
+            continue
+
+        value = data[key]
+        emoji = "✅"
+        note = ""
+
+        if key in alerts:
+            emoji = "❌"
+            try:
+                val = float(value)
+                if val < alerts[key]["min"]:
+                    note = " (terlalu rendah)"
+                elif val > alerts[key]["max"]:
+                    note = " (terlalu tinggi)"
+            except:
+                pass
+
+        summary += f"{emoji} {label}: {value}{note}\n"
+
+    # 🎥 Tambahkan link video jika ada
+    video_link = data.get("general_video_photo")
+    if video_link:
+        summary += f"\n🎥 *Video Kondisi Air:*\n{video_link}"
+
+    # 🤖 AI-generated troubleshooting (dalam bahasa Indonesia)
+    recommendations = generate_recommendations(alerts, lang="id")
+    if recommendations:
+        rec_msg = "\n\n🧠 *Saran AI:*\n" + "\n".join(recommendations)
+    else:
+        rec_msg = "\n\n🧠 *Saran AI:*\nTidak ada anomali yang terdeteksi hari ini."
+
+    # Kirim ke semua pakar
+    full_message = summary + rec_msg
+    for expert in EXPERT_NUMBERS:
+        send_whatsapp_message(expert, full_message)
+
 
 def send_daily_reminder():
     recipients = ["+18027600986","+628170073790"]

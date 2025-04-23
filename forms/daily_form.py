@@ -46,7 +46,15 @@ daily_form_en = [
         "name": "Inverter frequency at rest",
         "prompt": "8⃣ What was the inverter frequency during rest? (Hz)\n📸 Photo the inverter at rest and write the frequency (e.g., 32 Hz).",
         "require_photo": True
+    },
+
+    {
+        "key": "general_video",
+        "name": "General Water Video",
+        "prompt": "📹 Please upload a short video showing the condition of the pond water.",
+        "require_photo": True
     }
+
 ]
 
 daily_form_id = [
@@ -97,5 +105,13 @@ daily_form_id = [
         "name": "Frekuensi inverter saat istirahat",
         "prompt": "8⃣ Frekuensi inverter saat istirahat (Hz)?\n📸 Foto inverter saat tidak memberi pakan dan tulis angka (contoh: 32 Hz).",
         "require_photo": True
+    },
+
+    {
+        "key": "general_video",
+        "name": "Video Umum Air",
+        "prompt": "📹 Silakan unggah video pendek yang menunjukkan kondisi air kolam.",
+        "require_photo": True
     }
+    
 ]
