@@ -42,6 +42,9 @@ def notify_experts(user_phone, data):
     }
 
     summary = ""
+    tanggal = format_date_indonesian()
+    summary = f"📅 *{tanggal}*\n\n"
+
     if "UJI COBA" in user_phone:
         summary += "🧪 *PESAN INI HANYA UJI COBA*\n\n"
 
@@ -97,6 +100,28 @@ def generate_fake_daily_data():
         "inv_rest": random.randint(50, 300),
         "general_video_photo": "https://drive.google.com/uc?id=fake-video-link-test"  # fake placeholder
     }
+
+
+def format_date_indonesian():
+    hari = {
+        "Monday": "Senin",
+        "Tuesday": "Selasa",
+        "Wednesday": "Rabu",
+        "Thursday": "Kamis",
+        "Friday": "Jumat",
+        "Saturday": "Sabtu",
+        "Sunday": "Minggu"
+    }
+    bulan = {
+        1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
+        5: "Mei", 6: "Juni", 7: "Juli", 8: "Agustus",
+        9: "September", 10: "Oktober", 11: "November", 12: "Desember"
+    }
+
+    now = datetime.now()
+    nama_hari = hari[now.strftime("%A")]
+    nama_bulan = bulan[now.month]
+    return f"{nama_hari}, {now.day:02d} {nama_bulan} {now.year}"
 
 
 def send_daily_reminder():
