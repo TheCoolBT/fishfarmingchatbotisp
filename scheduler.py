@@ -151,7 +151,7 @@ def schedule_sandbox_reminder(phone):
     for job in scheduler.get_jobs():
         if job.id == job_id:
             scheduler.remove_job(job_id)
-    run_time = datetime.utcnow() + timedelta(seconds=30)
+    run_time = datetime.utcnow() + timedelta(seconds=10)
     scheduler.add_job(
         send_sandbox_reactivation_warning,
         'date',
