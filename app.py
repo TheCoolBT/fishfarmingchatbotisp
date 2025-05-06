@@ -1,185 +1,26 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client
 from dotenv import load_dotenv
+from forms.daily_form import daily_form_id
+from forms.weekly_form import weekly_form_id
 from drive import log_reading, log_weekly, upload_photo
-from forms.daily_form import daily_form_en, daily_form_id
-from forms.weekly_form import weekly_form_en, weekly_form_id
-from apscheduler.schedulers.background import BackgroundScheduler
-from ai_helper import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
-from datetime import datetime
-import random
+from scheduler import (
+    send_whatsapp_message,
+    notify_experts,
+    generate_fake_daily_data,
+    send_daily_reminder,
+    schedule_jobs,
+    update_last_activity
+)
 import os
 import re
+from datetime import datetime
+
 load_dotenv()
 app = Flask(__name__)
 user_state = {}
 
-# Twilio client setup
-TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-client = Client(TWILIO_SID, TWILIO_AUTH)
-
-def send_whatsapp_message(to, body):
-    client.messages.create(
-        from_="whatsapp:" + TWILIO_NUMBER,
-        to="whatsapp:" + to,
-        body=body
-    )
-
-def notify_experts(user_phone, data):
-    alerts = check_out_of_range(data)
-    all_keys = {
-        "do": "DO (mg/L)",
-        "ph": "pH",
-        "temperature": "Suhu (°C)",
-        "dead_fish": "Ikan Mati",
-        "feeding_freq": "Frekuensi Pemberian Pakan",
-        "feed_weight": "Berat Pakan (gram)",
-        "inv_feed": "Jumlah Pakan Tersisa",
-        "inv_rest": "Jumlah Pakan Baru",
-    }
-
-    summary = ""
-    tanggal = format_date_indonesian()
-    summary = f"📅 *{tanggal}*\n\n"
-
-    if "UJI COBA" in user_phone:
-        summary += "🧪 *PESAN INI HANYA UJI COBA*\n\n"
-
-    summary += f"📡 *Laporan Harian* dari {user_phone}:\n"
-    for key, label in all_keys.items():
-        if key not in data or data[key] == "":
-            continue
-
-        value = data[key]
-        emoji = "✅"
-        note = ""
-
-        if key in alerts:
-            emoji = "❌"
-            try:
-                val = float(value)
-                if val < alerts[key]["min"]:
-                    note = " (terlalu rendah)"
-                elif val > alerts[key]["max"]:
-                    note = " (terlalu tinggi)"
-            except:
-                pass
-
-        summary += f"{emoji} {label}: {value}{note}\n"
-
-    # 🎥 Tambahkan link video jika ada
-    video_link = data.get("general_video_photo")
-    if video_link:
-        summary += f"\n🎥 *Video Kondisi Air:*\n{video_link}"
-
-    # 🤖 AI-generated troubleshooting (dalam bahasa Indonesia)
-    recommendations = generate_recommendations(alerts, lang="id")
-    if recommendations:
-        rec_msg = "\n\n🧠 *Saran AI:*\n" + "\n".join(recommendations)
-    else:
-        rec_msg = "\n\n🧠 *Saran AI:*\nTidak ada anomali yang terdeteksi hari ini."
-
-    # Kirim ke semua pakar
-    full_message = summary + rec_msg
-    for expert in EXPERT_NUMBERS:
-        send_whatsapp_message(expert, full_message)
-
-
-def generate_fake_daily_data():
-    return {
-        "do": round(random.uniform(3.0, 8.5), 1),
-        "ph": round(random.uniform(6.0, 8.5), 1),
-        "temperature": round(random.uniform(25, 33), 1),
-        "dead_fish": random.randint(0, 5),
-        "feeding_freq": random.choice([2, 3, 4]),
-        "feed_weight": random.randint(80, 150),
-        "inv_feed": random.randint(0, 50),
-        "inv_rest": random.randint(50, 300),
-        "general_video_photo": "https://drive.google.com/uc?id=fake-video-link-test"  # fake placeholder
-    }
-
-
-def format_date_indonesian():
-    hari = {
-        "Monday": "Senin",
-        "Tuesday": "Selasa",
-        "Wednesday": "Rabu",
-        "Thursday": "Kamis",
-        "Friday": "Jumat",
-        "Saturday": "Sabtu",
-        "Sunday": "Minggu"
-    }
-    bulan = {
-        1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
-        5: "Mei", 6: "Juni", 7: "Juli", 8: "Agustus",
-        9: "September", 10: "Oktober", 11: "November", 12: "Desember"
-    }
-
-    now = datetime.now()
-    nama_hari = hari[now.strftime("%A")]
-    nama_bulan = bulan[now.month]
-    return f"{nama_hari}, {now.day:02d} {nama_bulan} {now.year}"
-
-
-def send_daily_reminder():
-    recipients = ["+18027600986","+628170073790"]
-    for number in recipients:
-        send_whatsapp_message(number, "🔔 Sekarang waktunya mengisi formulir harian!\n📨 It's time to fill out the daily form!")
-        user_state[number] = {
-            "lang": None,
-            "form_type": "daily",
-            "responses": {},
-            "media": {},
-            "stage": "lang_direct_daily"
-        }
-        send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
-
-def send_weekly_reminder():
-    recipients = ["+18027600986","+6285692351792","+628170073790"]
-    for number in recipients:
-        send_whatsapp_message(number, "📆 Jangan lupa isi formulir mingguan hari ini!\n📆 Don't forget to fill out the weekly form today!")
-        user_state[number] = {
-            "lang": None,
-            "form_type": "weekly",
-            "responses": {},
-            "media": {},
-            "step": 0,
-            "stage": "lang_direct_weekly"
-        }
-        send_whatsapp_message(number, "🌐 Please select a language / Silakan pilih bahasa:\n1. 🇮🇩 Bahasa Indonesia\n2. 🇬🇧 English")
-
-
-def send_reactivation_reminder():
-    recipients = ["+18027600986", "+628170073790"]  # Add more numbers as needed
-    for number in recipients:
-        send_whatsapp_message(
-            number,
-            "🔄 *Pengingat Aktivasi Bot*\n"
-            "Silakan kirim *join sense-believed* ke bot ini untuk menjaga koneksi tetap aktif. "
-            "Pengingat ini akan muncul setiap 48 jam."
-        )
-
-def schedule_jobs():
-    scheduler = BackgroundScheduler()
-
-    # Daily & weekly reminders
-    scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)  # 5:30 AM UTC+7
-    scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)   # 2:30 PM UTC+7
-    scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)  # 12 PM UTC+7
-
-    # 🔁 Reactivation message every 48 hours at 8:00 AM UTC+7 (which is 1:00 AM UTC)
-    scheduler.add_job(
-        send_reactivation_reminder,
-        'interval',
-        hours=48,
-        start_date='2025-04-17T01:00:00'  # Start at 1:00 AM UTC = 8:00 AM UTC+7
-    )
-
-    scheduler.start()
-
+# === Utilities ===
 
 def extract_number(text):
     match = re.search(r"[-+]?\d*\.\d+|\d+", text)
@@ -198,6 +39,7 @@ def send_field_list(msg, state):
         body += f"{i}. {field['name']}\n"
     msg.body(body.strip())
 
+# === Webhook Route ===
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_reply():
@@ -206,6 +48,8 @@ def whatsapp_reply():
     media_url = request.form.get("MediaUrl0")
     resp = MessagingResponse()
     msg = resp.message()
+
+    update_last_activity(sender)
 
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}
@@ -219,7 +63,7 @@ def whatsapp_reply():
 
     if msg_text == "test troubleshoot":
         fake_data = {
-            "do": "3.2",  # sengaja di bawah ambang
+            "do": "3.2",
             "ph": "7.2",
             "temperature": "28.0"
         }
@@ -239,6 +83,7 @@ def whatsapp_reply():
 
     state = user_state[sender]
 
+    # === Language Selection Stage ===
     if state["stage"].startswith("lang"):
         if msg_text in ["1", "indonesian", "bahasa indonesia"]:
             state["lang"] = "id"
@@ -260,6 +105,7 @@ def whatsapp_reply():
             msg.body(state["form"][0]["prompt"])
         return str(resp)
 
+    # === Form Selection Stage ===
     if state["stage"] == "form_select":
         if msg_text in ["1", "daily", "harian"]:
             state["form_type"] = "daily"
@@ -276,6 +122,7 @@ def whatsapp_reply():
             msg.body("❓ Balas dengan 1 untuk Harian atau 2 untuk Mingguan")
         return str(resp)
 
+    # === Weekly Form (Ordered) ===
     if state.get("stage") == "weekly_in_progress":
         form = state["form"]
         step = state["step"]
@@ -309,7 +156,7 @@ def whatsapp_reply():
             msg.body("🔢 Masukkan angka untuk: {}".format(current["name"]) if not has_number else "📸 Unggah foto untuk: {}".format(current["name"]))
             return str(resp)
 
-    # Harian (unordered)
+    # === Daily Form (Unordered) ===
     form = daily_form_id
     pending = get_pending_fields(state["responses"], form)
 
@@ -356,9 +203,10 @@ def whatsapp_reply():
 
     return str(resp)
 
+# === App Entry Point ===
 
 if __name__ == '__main__':
-    send_daily_reminder()
-    schedule_jobs()
+    send_daily_reminder()  # optional manual start
+    schedule_jobs()        # load all reminders
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
