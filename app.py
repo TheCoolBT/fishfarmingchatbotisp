@@ -10,7 +10,8 @@ from scheduler import (
     generate_fake_daily_data,
     send_daily_reminder,
     schedule_jobs,
-    update_last_activity
+    update_last_activity,
+    update_last_reactivation
 )
 import os
 import re
@@ -49,7 +50,9 @@ def whatsapp_reply():
     resp = MessagingResponse()
     msg = resp.message()
 
-    update_last_activity(sender)
+    if msg_text == "join sense-believed":
+        update_last_reactivation(sender)
+
 
     if msg_text in ["exit", "keluar"]:
         user_state[sender] = {"lang": None, "form_type": None, "responses": {}, "media": {}, "stage": "lang"}

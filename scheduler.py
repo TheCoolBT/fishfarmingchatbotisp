@@ -1,5 +1,3 @@
-# scheduler.py
-
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 from ai_helper import check_out_of_range, generate_recommendations, EXPERT_NUMBERS
@@ -19,8 +17,11 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 client = Client(TWILIO_SID, TWILIO_AUTH)
 
 user_state = {}
-last_activity = {}  # Stores last message time per farmer
+last_activity = {}
+last_reactivation_times = {}
+
 scheduler = BackgroundScheduler()
+scheduler.start()
 
 
 def send_whatsapp_message(to, body):
@@ -141,13 +142,31 @@ def send_sandbox_reactivation_warning(phone):
     )
 
 
+def update_last_reactivation(phone):
+    last_reactivation_times[phone] = datetime.utcnow()
+    job_id = f"sandbox_reactivation_{phone}"
+    # Remove any previous job for this user
+    try:
+        scheduler.remove_job(job_id)
+    except:
+        pass
+    run_time = datetime.utcnow() + timedelta(hours=71)
+    scheduler.add_job(
+        send_sandbox_reactivation_warning,
+        'date',
+        run_date=run_time,
+        args=[phone],
+        id=job_id
+    )
+
+
 def update_last_activity(phone):
     last_activity[phone] = datetime.utcnow()
     schedule_sandbox_reminder(phone)
 
 
 def schedule_sandbox_reminder(phone):
-    job_id = f"sandbox_reminder_{phone}"
+    job_id = f"sandbox_activity_reminder_{phone}"
     for job in scheduler.get_jobs():
         if job.id == job_id:
             scheduler.remove_job(job_id)
@@ -165,4 +184,3 @@ def schedule_jobs():
     scheduler.add_job(send_daily_reminder, 'cron', hour=22, minute=30)
     scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)
     scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minute=0)
-    scheduler.start()
