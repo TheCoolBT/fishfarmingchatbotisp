@@ -209,7 +209,6 @@ def whatsapp_reply():
 # === App Entry Point ===
 
 if __name__ == '__main__':
-    send_daily_reminder()  # optional manual start
     schedule_jobs()        # load all reminders
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
