@@ -1,64 +1,23 @@
-#  Fish Farm WhatsApp Chatbot
+## YouTube Tutorial
 
-A bilingual ( Indonesian +  English) WhatsApp chatbot for Indonesian fish farmers to submit daily and weekly reports.  
-Built with Flask, Twilio Sandbox, Google Sheets, and Google Drive.  
-Includes expert alerts, automatic reminders, and reactivation warnings for Twilio Sandbox.
+For a walkthrough on how to use and modify this bot, check out the tutorial video:  
+**https://youtu.be/rffINf2G2TA**
 
----
-
-##  Project Structure
-
-project-root/
-│
-├── app.py # Main Flask app: handles webhook and conversation
-├── scheduler.py # Background tasks: reminders, sandbox tracking
-├── drive.py # Handles Google Sheets + Drive logging
-├── ai_helper.py # Out-of-range alerts + AI troubleshooting
-├── forms/
-│ ├── daily_form.py # Daily form fields (English and Indonesian)
-│ └── weekly_form.py # Weekly form fields (English and Indonesian)
-│
-├── requirements.txt # Python dependencies
-├── .env # Environment variables (see below)
-└── Procfile # For Heroku deployment
-
+The video covers how to:
+1. Edit a question on the form
+2. Add a PDF SOP to the training data
+3. Assign a person as a **farmer/operator**
+4. Assign a person as a **technician**
 
 ---
 
-## Environment Setup
+## Edit the Files in `forms/`
 
-Create a `.env` file:
-
-TWILIO_ACCOUNT_SID=your_twilio_sid
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_PHONE_NUMBER=+14155238886 # Twilio sandbox number
-GOOGLE_CREDS_BASE64=base64_encoded_google_creds.json
-
-
-> Use `base64 google-creds.json` to encode your credentials file.
-
----
-
-## How It Works
-
-- 🌐 Users message `test` to start the form manually
-- ⏰ Scheduled jobs send daily + weekly reminders via WhatsApp
-- 📥 Responses are parsed, validated, and uploaded to Google Sheets
-- 📸 Photos and videos are stored in Google Drive
-- 📡 Expert alerts are sent when values are abnormal
-- 🔁 Bot tracks last activity and warns users to send `join sense-believed` before sandbox timeout
-
----
-
-## How to Modify Features
-
-###Add or Remove Form Questions
-
-Edit the files in `forms/`:
 - `daily_form.py`
 - `weekly_form.py`
 
-Each form field follows:
+Each form field follows this structure:
+
 ```python
 {
   "key": "do",
@@ -67,6 +26,7 @@ Each form field follows:
   "require_photo": True
 }
 Adjust Alert Thresholds
+
 Edit ai_helper.py:
 
 ALERT_THRESHOLDS = {
@@ -75,6 +35,7 @@ ALERT_THRESHOLDS = {
   ...
 }
 Update Reminder Schedule
+
 Edit scheduler.py → schedule_jobs():
 
 scheduler.add_job(send_daily_reminder, 'cron', hour=7, minute=30)
@@ -82,6 +43,7 @@ scheduler.add_job(send_weekly_reminder, 'cron', day_of_week='sun', hour=5, minut
 All times are in UTC.
 
 Change Sandbox Timeout Behavior
+
 In scheduler.py → update_last_reactivation():
 
 run_time = datetime.utcnow() + timedelta(hours=1)
@@ -105,3 +67,5 @@ Redeploy After Changes
 git add .
 git commit -m "Your message"
 git push heroku main
+
+You can copy and paste this directly into your `README.md` file on GitHub. Want a downloadable version too?
